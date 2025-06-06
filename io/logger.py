@@ -1,38 +1,32 @@
-import logging
-from logging.handlers import RotatingFileHandler
+# io/logger.py
+# logger class with a logs signal for debugging
+# instantiate Logger once in main_window to avoid multiple instances across threads
+# to use Logger in other classes, import it and pass the instance in their constructor
+# e.g. def __init__(self, logger): self.logger = logger
+# use logger.success(__file__) or logger.failure(__file__) to log messages with the filename automatically included
+
 from PyQt5.QtCore import QObject, pyqtSignal
+from datetime import datetime
+import os
 
-class QtSignalHandler(logging.Handler):
-    def __init__(self, signal):
-        super().__init__()
-        self.signal = signal
-        
-    def emit(self, record):
-        msg = self.format(record)
-        self.signal.emit(msg)
+class Logger(QObject):
+    logs = pyqtSignal(str)
 
-class CSILogger(QObject):
-    log_message = pyqtSignal(str)
-    
     def __init__(self):
         super().__init__()
-        self.logger = logging.getLogger('CSI')
-        self.logger.setLevel(logging.INFO)
-        
-        # Fichier de log (rotation automatique)
-        file_handler = RotatingFileHandler(
-            'csi_monitor.log', maxBytes=1e6, backupCount=3
-        )
-        file_handler.setFormatter(logging.Formatter(
-            '%(asctime)s - %(levelname)s - %(message)s'
-        ))
-        
-        # Sortie Qt
-        qt_handler = QtSignalHandler(self.log_message)
-        qt_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
-        
-        self.logger.addHandler(file_handler)
-        self.logger.addHandler(qt_handler)
-    
-    def log(self, message, level='info'):
-        getattr(self.logger, level)(message)
+
+    def _format_log(self, filename: str, status: str) -> str:
+        now = datetime.now()
+        time_str = now.strftime("%H:%M:%S")
+        base_name = os.path.basename(filename)
+        return f"[{base_name}:{time_str}:{status}]"
+
+    def success(self, filename: str):
+        log_str = self._format_log(filename, "success")
+        print(log_str)
+        self.logs.emit(log_str)
+
+    def failure(self, filename: str):
+        log_str = self._format_log(filename, "failure")
+        print(log_str)
+        self.logs.emit(log_str)

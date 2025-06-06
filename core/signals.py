@@ -1,25 +1,25 @@
-from time import perf_counter
-from PyQt5.QtCore import QObject, pyqtSignal
+# core/signals.py
+# create signals
+# instantiate in main and connect signals to slots
 
-class PerformanceMonitor(QObject):
-    update_stats = pyqtSignal(dict)
-    
-    def __init__(self):
-        super().__init__()
-        self.latencies = []
-        self.last_time = perf_counter()
-        
-    def start_measurement(self):
-        self.last_time = perf_counter()
-        
-    def end_measurement(self, label=""):
-        delta = (perf_counter() - self.last_time) * 1000  # in ms
-        self.latencies.append(delta)
-        stats = {
-            'last': delta,
-            'avg': sum(self.latencies)/len(self.latencies),
-            'max': max(self.latencies),
-            'label': label
-        }
-        self.update_stats.emit(stats)
-        return delta
+from PyQt5.QtCore import QObject, pyqtSignal
+import numpy as np
+
+class AppSignals(QObject):
+    # === Data Signals ===
+    csi_data = pyqtSignal(bytes, float)             # From receiver to parser
+    fft_data = pyqtSignal(np.ndarray, float)        # From processor to chart_view
+
+    # === Alert & Status Signals ===
+    threshold_exceeded = pyqtSignal(float, float)   # From processor to main_window
+
+    # === Configuration Signals ===
+    threshold_value = pyqtSignal(float)             # From main_window to processor
+
+    # === Logging Signals ===
+    logs = pyqtSignal(str)                           # From logger to main_window
+
+    # === Control Signals ===
+
+    start_app = pyqtSignal()                        # From UI to main
+    stop_app = pyqtSignal()                         # From UI to main

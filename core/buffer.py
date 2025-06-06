@@ -1,27 +1,36 @@
-import numpy as np
+# core/buffer.py
+# thread-safe circular buffer designed to store raw CSI data packets 
+# synchronization between threads is ensured by using a QMutex lock 
+# instantiate buffer once in main for csi_receiver thread usage
+# instantiate mutex once in main
+    
 from collections import deque
+from PyQt5.QtCore import QMutex, QMutexLocker
+import time
 
 class CircularBuffer:
-    def __init__(self, size=1000):
-        self.buffer = deque(maxlen=size)
-        self.size = size
-        
-    def add(self, data):
-        """Ajoute des données CSI au buffer"""
-        self.buffer.append(data)
-        
-    def get_last(self, n=1):
-        """Récupère les n derniers échantillons"""
-        return list(self.buffer)[-n:]
-        
-    def clear(self):
-        self.buffer.clear()
-        
-    def is_full(self):
-        return len(self.buffer) >= self.size
 
-class CSIBuffer(CircularBuffer):
-    def get_amplitudes_matrix(self, n_samples=100):
-        """Retourne une matrice numpy des amplitudes pour traitement"""
-        samples = self.get_last(n_samples)
-        return np.array([s.amplitudes for s in samples])
+    def __init__(self, maxsize: int):
+        self._buffer = deque(maxlen=maxsize)
+        self._timestamps = deque(maxlen=maxsize)
+
+    def put(self, data, mutex: QMutex):
+        with QMutexLocker(mutex):
+            self._buffer.append(data)
+            self._timestamps.append(time.time())
+
+    def get_batch(self, count: int, mutex: QMutex):
+        with QMutexLocker(mutex):
+            if len(self._buffer) >= count:
+                data_batch = [self._buffer.popleft() for _ in range(count)]
+                time_batch = [self._timestamps.popleft() for _ in range(count)]
+                return data_batch, time_batch
+            return [], []
+
+    def size(self, mutex: QMutex) -> int:
+        with QMutexLocker(mutex):
+            return len(self._buffer)
+
+    def is_full(self, mutex: QMutex) -> bool:
+        with QMutexLocker(mutex):
+            return len(self._buffer) >= self._buffer.maxlen
