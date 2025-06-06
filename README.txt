@@ -1,48 +1,84 @@
-# CSI Real-Time Movement Detection Application
+1st draft of app structure, cpp compilation and execution is faster thus only using signals and slots on QT. For python coding only, multi-threading is necessary to allow real-time reception, processing and display of CSI data spectrum. 
 
-This application is designed to **receive, process, and visualize CSI (Channel State Information) data in real time**. The data is captured using the **Nexmon CSI framework** from a **compatible Asus router** and transmitted via TCP to a **Raspberry Pi 4**, where it is processed and analyzed.
+TCP loop, parsing, processing and UI are in separate threads to allow real-time. Buffer is used to store CSI data between parsing and processing. Processing is in a thread to allow the possibility to add AI model for better detection in the future.
 
-## Features
+┌────────────────────┐                           ┌────────────────────┐
+│  Raspberry Pi 4    │ ────── ICMP PING ────────►│  OpenWRT Router    │
+│ (sends pings)      │                           │ (Nexmon CSI tool)  │
+└────────────────────┘                           └────────────────────┘
+                                                           │
+                                      CSI TCP Packets (raw bytes)
+                                                           ▼
 
-- **TCP reception** of raw CSI data from a Nexmon-enabled Asus router.
-- **Parsing, filtering, and transformation** of raw data into structured **NumPy arrays**.
-- **Real-time visualization** of CSI data using spectrogram representations.
-- **Amplitude-based motion detection** derived from spectrogram changes in real time.
-- Modular architecture designed for future integration of a trained **AI model** for enhanced real-time **motion recognition**.
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                            io/csi_receiver.py                                │
+│                           class CSIReceiver                                  │
+│  - connect_tcp()                                                             │
+│  - receive_loop()  ─────────────────────────────────────┐                    │
+│       ↓ raw bytes                                       │                    │
+│   signals.raw_data_received.emit(data)  ────────────────┘ (pyqtSignal)       │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                                                 ▼
+                                                       Signal: raw_data_received
+                                                                 ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                           processing/parser.py                               │
+│                        class CSIParser (QThread)                             │
+│ - on_new_data(data):                                                         │
+│     → process_pcap(data)                                                     │
+│     → parse_to_numpy()                                                       │
+│     → buffer.put(data_numpy) → CircularBuffer                                │
+└──────────────────────────────────────────────────────────────────────────────┘
 
-## Architecture Overview
+ ┌──────────────────────────┐         ┌─────────────────────────────┐
+ │   CircularBuffer         │◄────────┤      QMutex                 │
+ │ (thread-safe FIFO queue) │         │ (mutex for thread sync)     │
+ └──────────────────────────┘         └─────────────────────────────┘
 
-1. **Data Acquisition**:  
-   CSI data is transmitted via a TCP socket from the Asus router running the Nexmon CSI framework.
+                                 ▲
+                                 │ mutex.lock()
+                                 ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                      processing/csi_processor.py                             │
+│                    class CSIProcessor (QThread)                              │
+│  - run(): while True                                                         │
+│     → buffer.get_batch() (mutex protected)                                   │
+│     → process_fft(batch)                                                     │
+│     → detect_thresholds()                                                    │
+│     → run_model(batch)  ←  (AI model in the future)                          │
+│     → signals.fft_data.emit(spectrogram)                                     │
+│     → signals.threshold_exceeded.emit()                                      │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                │                ▲
+                         Signals:                │
+                         fft_data, alerts        │
+                                ▼                │
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                           gui/main_window.py                                 │
+│                      class MainWindow (QMainWindow)                          │
+│ - update_chart(data) → chart_view.append_data(data)                          │
+│ - show_threshold_alert()                                                     │
+│ - update_console() ←  io/logger.py (signals.logs)                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                 ▲
+                                 │
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                              io/logger.py                                    │
+│                           class AppLogger                                    │
+│ - success(), failure(), log() → signals.logs.emit(message)                   │
+└──────────────────────────────────────────────────────────────────────────────┘
 
-2. **Preprocessing**:  
-   The raw data is parsed, filtered, and converted into numerical format using NumPy for efficient computation.
+Hardware:
+- Raspberry Pi 4 : sends ICMP pings to the router
+- Router (OpenWRT + Nexmon CSI): emits CSI via TCP
+- Laptop (runs the app): receives, processes and displays CSI data
 
-3. **Visualization**:  
-   The processed data is visualized in real time as a spectrogram, enabling dynamic interpretation of the signal.
+Shared Tools:
+- `CircularBuffer`: connects Parser → Processor
+- `QMutex`: ensures safe concurrent access to buffer
 
-4. **Motion Detection**:  
-   The application performs real-time detection of amplitude variations that correlate with physical movement.
-
-5. **Future Work**:  
-   The current amplitude-based detection module is intended to be replaced by a trained AI model capable of classifying and recognizing specific motions in real time.
-
-## Requirements
-
-- Python 3.x
-- NumPy
-- Matplotlib (or similar for visualization)
-- Socket programming (TCP client setup)
-
-See `requirements.txt` for the full list of dependencies.
-
-## Usage
-
-1. Ensure the Nexmon CSI tool is correctly configured on your Asus router.
-2. Run the application on a Raspberry Pi 4 connected to the same network.
-3. The application will start receiving CSI data and display the real-time spectrogram.
-4. Observe amplitude variations for motion detection or integrate an AI model for motion classification.
-
-## Author
-
-Developed as part of an internship project by TP.
+Threads:
+- CSIReceiver (QThread)
+- CSIParser (QThread)
+- CSIProcessor (QThread)
+- MainWindow (Qt main GUI thread)
