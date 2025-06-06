@@ -1,0 +1,7 @@
+For next week, finish 1st draft for the whole app :
+  -ui
+  -main_window
+  -chart_view
+  -main
+
+Format and install ubuntu on sd card to use rpi, configure the router (x,y,theta), try ping and tcp reception.
