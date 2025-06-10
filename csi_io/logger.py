@@ -2,7 +2,7 @@
 # logger class with a logs signal for debugging
 # instantiate Logger once in main_window to avoid multiple instances across threads
 # to use Logger in other classes, import it and pass the instance in their constructor
-# e.g. def __init__(self, logger): self.logger = logger
+# def __init__(self, logger): self.logger = logger
 # use logger.success(__file__) or logger.failure(__file__) to log messages with the filename automatically included
 
 from PyQt5.QtCore import QObject, pyqtSignal

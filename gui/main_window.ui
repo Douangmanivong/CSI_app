@@ -44,7 +44,7 @@
              <item row="0" column="0">
               <widget class="QLabel" name="thresholdLabel">
                <property name="text">
-                <string>Threshold (0-100):</string>
+                <string>Threshold (disabled or 0-100):</string>
                </property>
               </widget>
              </item>
@@ -83,7 +83,7 @@
              <item row="0" column="3">
               <widget class="QCheckBox" name="defaultThresholdCheckBox">
                <property name="text">
-                <string>Use Default</string>
+                <string>Enable Detection</string>
                </property>
               </widget>
              </item>
@@ -118,7 +118,7 @@
               </property>
               <property name="styleSheet">
                <string notr="true">background-color: #5cb85c; color: white;</string>
-               </property>
+              </property>
              </widget>
             </item>
             <item>

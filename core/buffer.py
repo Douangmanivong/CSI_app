@@ -1,5 +1,5 @@
 # core/buffer.py
-# thread-safe circular buffer designed to store raw CSI data packets 
+# thread-safe circular buffer designed to store parsed CSI data packets 
 # synchronization between threads is ensured by using a QMutex lock 
 # instantiate buffer once in main for csi_receiver thread usage
 # instantiate mutex once in main
