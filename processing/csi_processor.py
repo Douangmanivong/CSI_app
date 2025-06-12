@@ -20,6 +20,7 @@ class CSIProcessor(QThread):
         self.stop_event = stop_event
         self.batch_size = batch_size
         self.threshold_value = THRESHOLD_VALUE
+        self.t0 = None  # Reference timestamp
 
         if self.logger:
             self.logger.success(__file__, "<__init__>")
@@ -33,7 +34,7 @@ class CSIProcessor(QThread):
                     self.msleep(10)
             except Exception as e:
                 if self.logger:
-                    self.logger.failure(__file__, "<run>: exception")
+                    self.logger.failure(__file__, f"<run>: exception: {e}")
                 self.msleep(100)
 
     def _retrieve_batch(self):
@@ -47,39 +48,64 @@ class CSIProcessor(QThread):
         return True
 
     def _process_batch(self, data_batch, time_batch):
-        all_magnitudes = []
-        latest_timestamp = 0
-        for csi_packet, timestamp in zip(data_batch, time_batch):
-            if isinstance(csi_packet, dict) and 'magnitudes' in csi_packet:
-                all_magnitudes.append(csi_packet['magnitudes'])
-                latest_timestamp = max(latest_timestamp, timestamp)
-        if not all_magnitudes:
+        try:
+            all_magnitudes = []
+            latest_timestamp = time.time()
+
+            if self.t0 is None:
+                self.t0 = latest_timestamp
+                if self.logger:
+                    self.logger.success(__file__, f"<process_batch>: t0 initialized at {self.t0}")
+
+            for csi_packet, _ in zip(data_batch, time_batch):
+                if isinstance(csi_packet, dict) and 'magnitudes' in csi_packet:
+                    all_magnitudes.append(csi_packet['magnitudes'])
+
+            if not all_magnitudes:
+                if self.logger:
+                    self.logger.failure(__file__, "<_process_batch>: no magnitudes found")
+                return
+
+            magnitude_matrix = np.array(all_magnitudes)
+            self._detect_thresholds(magnitude_matrix, latest_timestamp)
+            self._emit_fft_data(magnitude_matrix, latest_timestamp)
+        except Exception as e:
             if self.logger:
-                self.logger.failure(__file__, "<_process_batch>: no magnitudes found")
-            return
-        magnitude_matrix = np.array(all_magnitudes)
-        self._detect_thresholds(magnitude_matrix, latest_timestamp)
-        self._emit_fft_data(magnitude_matrix, latest_timestamp)
+                self.logger.failure(__file__, f"<_process_batch>: {e}")
 
     def _detect_thresholds(self, magnitude_matrix, timestamp):
         if self.threshold_value == THRESHOLD_DISABLED:
             return
+        try:
+            mean_magnitudes = np.mean(magnitude_matrix, axis=0)
+            exceeded_mask = mean_magnitudes > self.threshold_value
 
-        mean_magnitudes = np.mean(magnitude_matrix, axis=0)
-        exceeded_mask = mean_magnitudes > self.threshold_value
-
-        if np.any(exceeded_mask):
-            max_exceeded_value = np.max(mean_magnitudes[exceeded_mask])
-            message = f"value={max_exceeded_value:.2f}, time={timestamp:.2f}s"
-            self.signals.threshold_exceeded.emit(message)
+            if np.any(exceeded_mask):
+                max_exceeded_value = np.max(mean_magnitudes[exceeded_mask])
+                relative_time = timestamp - self.t0 if self.t0 else timestamp
+                message = f"value={max_exceeded_value:.2f}, time={relative_time:.2f}s"
+                self.signals.threshold_exceeded.emit(message)
+                if self.logger:
+                    self.logger.success(__file__, "<_detect_thresholds>: threshold exceeded")
+        except Exception as e:
             if self.logger:
-                self.logger.success(__file__, "<_detect_thresholds>: threshold exceeded")
+                self.logger.failure(__file__, f"<_detect_thresholds>: {e}")
 
     def _emit_fft_data(self, magnitude_matrix, timestamp):
-        mean_spectrum = np.mean(magnitude_matrix, axis=0)
-        self.signals.fft_data.emit({'time': timestamp, 'magnitude': float(np.mean(mean_spectrum))})
-        if self.logger:
-            self.logger.success(__file__, "<_emit_fft_data>: data sent to chart")
+        try:
+            if self.t0 is None:
+                self.t0 = timestamp
+                if self.logger:
+                    self.logger.success(__file__, f"<_emit_fft_data>: t0 initialized at {self.t0}")
+
+            relative_time = timestamp - self.t0
+            mean_spectrum = np.mean(magnitude_matrix, axis=0)
+            self.signals.fft_data.emit({'time': relative_time, 'magnitude': float(np.mean(mean_spectrum))})
+            if self.logger:
+                self.logger.success(__file__, "<_emit_fft_data>: data sent to chart")
+        except Exception as e:
+            if self.logger:
+                self.logger.failure(__file__, f"<_emit_fft_data>: {e}")
 
     def update_threshold(self, new_threshold):
         try:
@@ -91,4 +117,4 @@ class CSIProcessor(QThread):
                 self.logger.success(__file__, "<update_threshold>: new threshold")
         except Exception as e:
             if self.logger:
-                self.logger.failure(__file__, "<update_threshold>: failed to get value")
+                self.logger.failure(__file__, f"<update_threshold>: failed to get value: {e}")

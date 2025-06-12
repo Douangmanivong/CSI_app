@@ -8,7 +8,7 @@ import numpy as np
 class Signals(QObject):
     # Data Signals
     csi_data = pyqtSignal(bytes, float)             # From receiver to parser
-    fft_data = pyqtSignal(np.ndarray, float)        # From processor to chart_view
+    fft_data = pyqtSignal(dict)                     # From processor to chart_view
 
     # Alert & Status Signals 
     threshold_exceeded = pyqtSignal(str)            # From processor to main_window
