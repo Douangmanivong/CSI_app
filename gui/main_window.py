@@ -39,7 +39,7 @@ class MainWindow(QMainWindow):
         self.alert_timer.setSingleShot(True)
 
         if self.logger:
-            self.logger.success(__file__)
+            self.logger.success(__file__, "<__init__>")
 
     def _load_ui(self):
         try:
@@ -49,9 +49,12 @@ class MainWindow(QMainWindow):
             self.stopButton.setEnabled(False)
             self.thresholdValueLabel.setText(str(self.thresholdSlider.value()))
 
+            if self.logger:
+                self.logger.success(__file__, "<_load_ui>: ui loaded")
+
         except Exception as e:
             if self.logger:
-                self.logger.failure(__file__)
+                self.logger.failure(__file__, "<_load_ui>: failed to load ui")
             self.setWindowTitle("CSI Motion Detection")
             self.resize(1000, 700)
 
@@ -70,11 +73,11 @@ class MainWindow(QMainWindow):
                 self.plot_layout.addWidget(self.chart_view)
 
             if self.logger:
-                self.logger.success(__file__)
+                self.logger.success(__file__, "<_setup_chart>: chart created")
 
         except Exception as e:
             if self.logger:
-                self.logger.failure(__file__)
+                self.logger.failure(__file__, "<_setup_chart>: failed to create chart")
 
     def _connect_ui_signals(self):
         try:
@@ -84,9 +87,12 @@ class MainWindow(QMainWindow):
             self.startButton.clicked.connect(self._on_start_clicked)
             self.stopButton.clicked.connect(self._on_stop_clicked)
 
+            if self.logger:
+                self.logger.success(__file__, "<_connect_ui_signals>: buttons connected")
+
         except Exception as e:
             if self.logger:
-                self.logger.failure(__file__)
+                self.logger.failure(__file__, "<_connect_ui_signals>: failed to connect")
 
     def _on_threshold_changed(self, value):
         self.thresholdValueLabel.setText(str(value))
@@ -95,7 +101,7 @@ class MainWindow(QMainWindow):
             self.signals.threshold_value.emit(value)
 
         if self.logger:
-            self.logger.success(__file__)
+            self.logger.success(__file__, "<_on_threshold_changed>: slider event")
 
     def _on_no_threshold_toggled(self, checked):
         self.thresholdSlider.setEnabled(checked)
@@ -106,13 +112,16 @@ class MainWindow(QMainWindow):
         else:
             self.signals.threshold_value.emit(Settings.THRESHOLD_DISABLED)
 
+        if self.logger:
+            self.logger.success(__file__, "<_on_no_threshold_toggled>: checkbox clicked")
+
     def _on_start_clicked(self):
         if not self.is_running:
             self.signals.start_app.emit()
             self._set_running_state(True)
 
             if self.logger:
-                self.logger.success(__file__)
+                self.logger.success(__file__, "<_on_start_clicked>: start app")
 
     def _on_stop_clicked(self):
         if self.is_running:
@@ -120,7 +129,7 @@ class MainWindow(QMainWindow):
             self._set_running_state(False)
 
             if self.logger:
-                self.logger.success(__file__)
+                self.logger.success(__file__, "<_on_stop_clicked>: stop app")
 
     def _set_running_state(self, running):
         self.is_running = running
@@ -130,6 +139,8 @@ class MainWindow(QMainWindow):
         if not running:
             self._clear_alert()
 
+        # Removed logger to avoid frequent logging
+
     @pyqtSlot(str)
     def show_threshold_alert(self, message):
         try:
@@ -138,11 +149,11 @@ class MainWindow(QMainWindow):
             self.alert_timer.start(3000)
 
             if self.logger:
-                self.logger.success(__file__)
+                self.logger.success(__file__, "<show_threshold_alert>: alert")
 
         except Exception as e:
             if self.logger:
-                self.logger.failure(__file__)
+                self.logger.failure(__file__, "<show_threshold_alert> failed to alert")
 
     def _clear_alert(self):
         self.alertLineEdit.setText("No motion detected")
@@ -163,7 +174,7 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             if self.logger:
-                self.logger.failure(__file__)
+                self.logger.failure(__file__, "<update_console>: failed to update")
 
     def update_chart(self, fft_data):
         if self.chart_view:
@@ -188,11 +199,16 @@ class MainWindow(QMainWindow):
             event.accept()
 
         if self.logger:
-            self.logger.success(__file__)
+            self.logger.success(__file__, "<closeEvent>: app closed")
 
     def get_current_threshold(self):
         if not self.defaultThresholdCheckBox.isChecked():
+            if self.logger:
+                self.logger.success(__file__, "<get_current_threshold>: enabled checked")
             return Settings.THRESHOLD_DISABLED
+
+        if self.logger:
+            self.logger.success(__file__, "<get_current_threshold>: current value updated")
         return self.thresholdSlider.value()
 
     def set_threshold(self, value):
@@ -201,3 +217,6 @@ class MainWindow(QMainWindow):
         else:
             self.defaultThresholdCheckBox.setChecked(True)
             self.thresholdSlider.setValue(value)
+
+        if self.logger:
+            self.logger.success(__file__, "<set_threshold>: value changed")

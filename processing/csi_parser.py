@@ -38,10 +38,10 @@ class CSIParser(QThread):
         self.internal_buffer = bytearray()
 
         self.signals.csi_data.connect(self.on_new_data)
-        self.logger.success(__file__)
+        self.logger.success(__file__, "<__init__>")
 
     def run(self):
-        self.logger.success(__file__)
+        self.logger.success(__file__, "<run>: parsing")
         while not self.stop_event.is_set():
             if self.internal_queue:
                 self.process_queued_data()
@@ -52,13 +52,13 @@ class CSIParser(QThread):
             if len(data) >= 4:
                 magic_number = struct.unpack('<I', data[:4])[0]
                 if self.is_setup_complete and magic_number in (self.MAGIC_NUM_MICRO, self.MAGIC_NUM_NANO):
-                    self.logger.success(__file__)
+                    self.logger.success(__file__, "<on_new_data>: reset triggered")
                     self.reset()
             self.internal_queue.append(data)
             if not self.is_setup_complete:
                 self.setup(data)
         except Exception as e:
-            self.logger.failure(__file__)
+            self.logger.failure(__file__, "<on_new_data>: failed to append data")
             print(f"Parse error: {e}")
 
     def setup(self, data: bytes):
@@ -74,9 +74,9 @@ class CSIParser(QThread):
                 packet = self.internal_queue.popleft()
                 self.internal_queue.appendleft(packet[24:])
             self.is_setup_complete = True
-            self.logger.success(__file__)
+            self.logger.success(__file__, "<setup>: MN and format ok")
         except Exception as e:
-            self.logger.failure(__file__)
+            self.logger.failure(__file__, "<setup>: setup failed")
             print(f"Setup error: {e}")
 
     def process_queued_data(self):
@@ -107,8 +107,9 @@ class CSIParser(QThread):
                         'subcarriers': len(magnitudes)
                     }
                     self.buffer.put(csi_packet, self.mutex)
+
                 except Exception as e:
-                    self.logger.failure(__file__)
+                    self.logger.failure(__file__, "<process_queued_data>: failed to process")
                     print(f"Packet processing error: {e}")
 
             self.internal_buffer = self.internal_buffer[self.PACKET_SIZE_BYTES:]
@@ -120,7 +121,7 @@ class CSIParser(QThread):
 
     def extract_magnitude_data(self, data: bytes) -> np.ndarray:
         if len(data) != 256:
-            self.logger.failure(__file__)
+            self.logger.failure(__file__, "<extract_magnitude_data>: wrong data length")
             raise ValueError(f"Expected 256 bytes, got {len(data)}")
 
         try:
@@ -208,7 +209,7 @@ class CSIParser(QThread):
             return magnitudes
 
         except Exception as e:
-            self.logger.failure(__file__)
+            self.logger.failure(__file__, "<extract_magnitude_data>: failed to return fft")
             print(f"Magnitude extraction error: {e}")
             raise
 
@@ -218,7 +219,7 @@ class CSIParser(QThread):
         self.time_shift_power = 0
         self.start_time = 0.0
         self.is_setup_complete = False
-        self.logger.success(__file__)
+        self.logger.success(__file__, "<reset>: reset done")
 
     def get_start_time(self) -> float:
         return self.start_time

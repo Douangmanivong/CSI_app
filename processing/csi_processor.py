@@ -21,14 +21,19 @@ class CSIProcessor(QThread):
         self.batch_size = batch_size
         self.threshold_value = THRESHOLD_VALUE
 
+        if self.logger:
+            self.logger.success(__file__, "<__init__>")
+
     def run(self):
-        self.logger.success(__file__)
+        if self.logger:
+            self.logger.success(__file__, "<run>: processing")
         while not self.stop_event.is_set():
             try:
                 if not self._retrieve_batch():
                     self.msleep(10)
             except Exception as e:
-                self.logger.failure(__file__)
+                if self.logger:
+                    self.logger.failure(__file__, "<run>: exception")
                 self.msleep(100)
 
     def _retrieve_batch(self):
@@ -49,7 +54,8 @@ class CSIProcessor(QThread):
                 all_magnitudes.append(csi_packet['magnitudes'])
                 latest_timestamp = max(latest_timestamp, timestamp)
         if not all_magnitudes:
-            self.logger.failure(__file__)
+            if self.logger:
+                self.logger.failure(__file__, "<_process_batch>: no magnitudes found")
             return
         magnitude_matrix = np.array(all_magnitudes)
         self._detect_thresholds(magnitude_matrix, latest_timestamp)
@@ -66,12 +72,14 @@ class CSIProcessor(QThread):
             max_exceeded_value = np.max(mean_magnitudes[exceeded_mask])
             message = f"value={max_exceeded_value:.2f}, time={timestamp:.2f}s"
             self.signals.threshold_exceeded.emit(message)
-            self.logger.success(__file__)
+            if self.logger:
+                self.logger.success(__file__, "<_detect_thresholds>: threshold exceeded")
 
     def _emit_fft_data(self, magnitude_matrix, timestamp):
         mean_spectrum = np.mean(magnitude_matrix, axis=0)
         self.signals.fft_data.emit({'time': timestamp, 'magnitude': float(np.mean(mean_spectrum))})
-        self.logger.success(__file__)
+        if self.logger:
+            self.logger.success(__file__, "<_emit_fft_data>: data sent to chart")
 
     def update_threshold(self, new_threshold):
         try:
@@ -79,6 +87,8 @@ class CSIProcessor(QThread):
                 self.threshold_value = THRESHOLD_DISABLED
             else:
                 self.threshold_value = float(new_threshold)
-            self.logger.success(__file__)
+            if self.logger:
+                self.logger.success(__file__, "<update_threshold>: new threshold")
         except Exception as e:
-            self.logger.failure(__file__)
+            if self.logger:
+                self.logger.failure(__file__, "<update_threshold>: failed to get value")
