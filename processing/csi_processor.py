@@ -1,14 +1,13 @@
 # processing/csi_processor.py
-# CSI data processor thread
+# abstract CSI data processor thread
 # retrieves CSI packets from circular buffer in batches
-# applies threshold detection on magnitudes per subcarrier
-# emits fft_data signal for chart visualization
-# emits threshold_exceeded signal when thresholds are breached
+# defines abstract interface for processing CSI data
+# concrete subclasses should implement specific signal extraction (magnitude, phase, Doppler)
 
-import numpy as np
+from abc import ABC, abstractmethod
 import time
 from PyQt5.QtCore import QThread
-from config.settings import THRESHOLD_VALUE, THRESHOLD_DISABLED
+
 
 class CSIProcessor(QThread):
     def __init__(self, signals, buffer, mutex, logger, stop_event, batch_size=10):
@@ -19,8 +18,7 @@ class CSIProcessor(QThread):
         self.logger = logger
         self.stop_event = stop_event
         self.batch_size = batch_size
-        self.threshold_value = THRESHOLD_VALUE
-        self.t0 = None  # Reference timestamp
+        self.t0 = None
 
         if self.logger:
             self.logger.success(__file__, "<__init__>")
@@ -28,6 +26,7 @@ class CSIProcessor(QThread):
     def run(self):
         if self.logger:
             self.logger.success(__file__, "<run>: processing")
+
         while not self.stop_event.is_set():
             try:
                 if not self._retrieve_batch():
@@ -41,80 +40,16 @@ class CSIProcessor(QThread):
         buffer_size = self.buffer.size(self.mutex)
         if buffer_size < self.batch_size:
             return False
+
         data_batch, time_batch = self.buffer.get_batch(self.batch_size, self.mutex)
         if not data_batch:
             return False
-        self._process_batch(data_batch, time_batch)
+
+        self.process_batch(data_batch, time_batch)
         return True
 
-    def _process_batch(self, data_batch, time_batch):
-        try:
-            all_magnitudes = []
-            latest_timestamp = time.time()
-
-            if self.t0 is None:
-                self.t0 = latest_timestamp
-                if self.logger:
-                    self.logger.success(__file__, f"<process_batch>: t0 initialized at {self.t0}")
-
-            for csi_packet, _ in zip(data_batch, time_batch):
-                if isinstance(csi_packet, dict) and 'magnitudes' in csi_packet:
-                    all_magnitudes.append(csi_packet['magnitudes'])
-
-            if not all_magnitudes:
-                if self.logger:
-                    self.logger.failure(__file__, "<_process_batch>: no magnitudes found")
-                return
-
-            magnitude_matrix = np.array(all_magnitudes)
-            self._detect_thresholds(magnitude_matrix, latest_timestamp)
-            self._emit_fft_data(magnitude_matrix, latest_timestamp)
-        except Exception as e:
-            if self.logger:
-                self.logger.failure(__file__, f"<_process_batch>: {e}")
-
-    def _detect_thresholds(self, magnitude_matrix, timestamp):
-        if self.threshold_value == THRESHOLD_DISABLED:
-            return
-        try:
-            mean_magnitudes = np.mean(magnitude_matrix, axis=0)
-            exceeded_mask = mean_magnitudes > self.threshold_value
-
-            if np.any(exceeded_mask):
-                max_exceeded_value = np.max(mean_magnitudes[exceeded_mask])
-                relative_time = timestamp - self.t0 if self.t0 else timestamp
-                message = f"value={max_exceeded_value:.2f}, time={relative_time:.2f}s"
-                self.signals.threshold_exceeded.emit(message)
-                if self.logger:
-                    self.logger.success(__file__, "<_detect_thresholds>: threshold exceeded")
-        except Exception as e:
-            if self.logger:
-                self.logger.failure(__file__, f"<_detect_thresholds>: {e}")
-
-    def _emit_fft_data(self, magnitude_matrix, timestamp):
-        try:
-            if self.t0 is None:
-                self.t0 = timestamp
-                if self.logger:
-                    self.logger.success(__file__, f"<_emit_fft_data>: t0 initialized at {self.t0}")
-
-            relative_time = timestamp - self.t0
-            mean_spectrum = np.mean(magnitude_matrix, axis=0)
-            self.signals.fft_data.emit({'time': relative_time, 'magnitude': float(np.mean(mean_spectrum))})
-            if self.logger:
-                self.logger.success(__file__, "<_emit_fft_data>: data sent to chart")
-        except Exception as e:
-            if self.logger:
-                self.logger.failure(__file__, f"<_emit_fft_data>: {e}")
-
-    def update_threshold(self, new_threshold):
-        try:
-            if new_threshold == THRESHOLD_DISABLED:
-                self.threshold_value = THRESHOLD_DISABLED
-            else:
-                self.threshold_value = float(new_threshold)
-            if self.logger:
-                self.logger.success(__file__, "<update_threshold>: new threshold")
-        except Exception as e:
-            if self.logger:
-                self.logger.failure(__file__, f"<update_threshold>: failed to get value: {e}")
+    @abstractmethod
+    def process_batch(self, data_batch, time_batch):
+        # Process a CSI data batch
+        # Should be implemented by concrete subclasses
+        pass

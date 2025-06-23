@@ -11,11 +11,12 @@ from PyQt5.QtCore import Qt, pyqtSlot
 from PyQt5.QtGui import QPainter
 import numpy as np
 
+
 class ChartView(QWidget):
-    def __init__(self, parent=None, logger=None, 
-                 title="CSI Spectrogram", 
-                 x_name="Time (s)", 
-                 y_name="Magnitude", 
+    def __init__(self, parent=None, logger=None,
+                 title="CSI Spectrogram",
+                 x_name="Time (s)",
+                 y_name="Magnitude",
                  x_width=20.0):
         super().__init__(parent)
 
@@ -75,7 +76,7 @@ class ChartView(QWidget):
             self._append_data_point(x, y)
 
             if self.logger:
-                self.logger.success(__file__, f"<update_chart>: point added")
+                self.logger.success(__file__, "<update_chart>: point added")
 
         except Exception as e:
             if self.logger:
@@ -106,7 +107,7 @@ class ChartView(QWidget):
         self._update_y_range(y)
 
         if self.logger:
-            self.logger.success(__file__, f"<_append_data_point>: data added")
+            self.logger.success(__file__, "<_append_data_point>: data added")
 
     def _update_y_range(self, new_y):
         self.y_values.add(new_y)
@@ -123,7 +124,7 @@ class ChartView(QWidget):
             self.axis_y.setRange(y_min - y_buffer, y_max + y_buffer)
 
             if self.logger:
-                self.logger.success(__file__, f"<_update_y_range>: updated")
+                self.logger.success(__file__, "<_update_y_range>: updated")
 
     def clear(self):
         self.line_series.clear()

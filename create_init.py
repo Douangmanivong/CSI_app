@@ -11,9 +11,8 @@ directories = [
     "config",
     "core",
     "gui",
-    "io",
-    "processing",
-    os.path.join("processing", "csi")  # nested submodule
+    "csi_io",
+    "processing"
 ]
 
 # Base path: assumed to be the root of the project (same directory as this script)

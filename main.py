@@ -14,6 +14,7 @@ os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = os.path.join(
     "plugins",
     "platforms"
 )
+
 import threading
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import QMutex
@@ -21,7 +22,7 @@ from PyQt5.QtCore import QMutex
 from core.signals import Signals
 from core.buffer import CircularBuffer
 from gui.main_window import MainWindow
-from processing.csi_processor import CSIProcessor
+from processing.csi_magnitude_processor import CSIMagnitudeProcessor
 from csi_io.csi_receiver import CSIReceiver
 from csi_io.logger import Logger
 from processing.csi_parser import CSIParser
@@ -34,6 +35,7 @@ csi_receiver = None
 csi_processor = None
 csi_parser = None
 logger = None
+
 
 def main():
     global csi_receiver, csi_processor, csi_parser, logger
@@ -54,7 +56,7 @@ def main():
     csi_parser = CSIParser(signals, logger, buffer, buffer_mutex, stop_event)
 
     # Processor and receiver threads
-    csi_processor = CSIProcessor(signals, buffer, buffer_mutex, logger, stop_event)
+    csi_processor = CSIMagnitudeProcessor(signals, buffer, buffer_mutex, logger, stop_event)
     csi_receiver = CSIReceiver(signals, logger, stop_event)
 
     # Connect signals and slots
@@ -68,6 +70,7 @@ def main():
 
     return app.exec_()
 
+
 def connect_signals(signals, main_window, csi_processor):
     signals.threshold_value.connect(csi_processor.update_threshold)
     signals.threshold_exceeded.connect(main_window.show_threshold_alert)
@@ -78,6 +81,7 @@ def connect_signals(signals, main_window, csi_processor):
 
     if logger:
         logger.success(__file__, "<connect_signals>")
+
 
 def start_threads():
     global threads_running, stop_event, csi_receiver, csi_processor, csi_parser, logger
@@ -112,6 +116,7 @@ def start_threads():
         if logger:
             logger.failure(__file__, "<start_threads>: exception occurred")
         stop_threads()
+
 
 def stop_threads():
     global threads_running, stop_event, csi_receiver, csi_processor, csi_parser, logger
@@ -149,6 +154,7 @@ def stop_threads():
         if logger:
             logger.failure(__file__, "<stop_threads>: exception occurred")
         threads_running = False
+
 
 if __name__ == "__main__":
     sys.exit(main())

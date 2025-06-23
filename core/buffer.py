@@ -3,10 +3,11 @@
 # synchronization between threads is ensured by using a QMutex lock 
 # instantiate buffer once in main for csi_receiver thread usage
 # instantiate mutex once in main
-    
+
 from collections import deque
 from PyQt5.QtCore import QMutex, QMutexLocker
 import time
+
 
 class CircularBuffer:
 

@@ -1,14 +1,13 @@
 # processing/csi_parser.py
-# CSI parser classes adapted from C++ version for Python/PyQt5 architecture
-# base abstract class and BCM4366C0 specialization
-# receives csi_data signal, accumulates 332-byte packets, parses CSI data
-# stores parsed data in shared circular buffer for processor thread
+# CSI parser base class
+# receives csi_data signal, accumulates 332-byte packets
+# parses timestamp and raw CSI bytes
+# stores raw CSI data in shared circular buffer for downstream processing
 
 import struct
-import numpy as np
 from collections import deque
 from PyQt5.QtCore import QThread
-import math
+
 
 class CSIParser(QThread):
     PACKET_SIZE_BYTES = 332
@@ -97,14 +96,12 @@ class CSIParser(QThread):
                     packet_time = self.parse_time(time_primary, time_secondary)
                     relative_time = packet_time - self.start_time
 
-                    csi_data_bytes = self.internal_buffer[self.DATA_INDEX:self.DATA_INDEX + self.DATA_SIZE_BYTES]
-                    magnitudes = self.extract_magnitude_data(csi_data_bytes)
+                    raw_csi = self.internal_buffer[self.DATA_INDEX:self.DATA_INDEX + self.DATA_SIZE_BYTES]
 
                     csi_packet = {
                         'antenna': antenna,
                         'timestamp': relative_time,
-                        'magnitudes': magnitudes,
-                        'subcarriers': len(magnitudes)
+                        'raw_csi': raw_csi
                     }
                     self.buffer.put(csi_packet, self.mutex)
 
@@ -118,100 +115,6 @@ class CSIParser(QThread):
         primary = struct.unpack('<I', time_primary)[0]
         secondary = struct.unpack('<I', time_secondary)[0]
         return primary + secondary / (10 ** self.time_shift_power)
-
-    def extract_magnitude_data(self, data: bytes) -> np.ndarray:
-        if len(data) != 256:
-            self.logger.failure(__file__, "<extract_magnitude_data>: wrong data length")
-            raise ValueError(f"Expected 256 bytes, got {len(data)}")
-
-        try:
-            count = 64
-            M = 12
-            E = 6
-            nbits = 10
-            e_p = 1 << (E - 1)
-            e_zero = -M
-            maxbit = -e_p
-            k_tof_unpack_sgn_mask = 1 << 31
-            ri_mask = (1 << (M - 1)) - 1
-            E_mask = (1 << E) - 1
-            sgnr_mask = 1 << (E + 2 * M - 1)
-            sgni_mask = sgnr_mask >> M
-
-            He = [0] * 256
-            Hout = [0] * 512
-
-            for i in range(count):
-                h_bytes = data[4*i:4*i+4]
-                h = struct.unpack('<I', h_bytes)[0]
-
-                v_real = (h >> (E + M)) & ri_mask
-                v_imag = (h >> E) & ri_mask
-                e = h & E_mask
-
-                if e >= e_p:
-                    e -= (e_p << 1)
-
-                He[i] = e
-                x = v_real | v_imag
-
-                if x:
-                    m = 0xffff0000
-                    b = 0xffff
-                    s = 16
-                    while s > 0:
-                        if x & m:
-                            e += s
-                            x >>= s
-                        s >>= 1
-                        m = (m >> s) & b
-                        b >>= s
-
-                    if e > maxbit:
-                        maxbit = e
-
-                if h & sgnr_mask:
-                    v_real |= k_tof_unpack_sgn_mask
-                if h & sgni_mask:
-                    v_imag |= k_tof_unpack_sgn_mask
-
-                Hout[i << 1] = v_real
-                Hout[(i << 1) + 1] = v_imag
-
-            shft = nbits - maxbit
-            for i in range(count * 2):
-                e = He[i >> 1] + shft
-                sgn = 1
-                if Hout[i] & k_tof_unpack_sgn_mask:
-                    sgn = -1
-                    Hout[i] &= ~k_tof_unpack_sgn_mask
-
-                if e < e_zero:
-                    Hout[i] = 0
-                elif e < 0:
-                    Hout[i] = Hout[i] >> (-e)
-                else:
-                    Hout[i] = Hout[i] << e
-
-                Hout[i] *= sgn
-
-            magnitudes = np.zeros(count)
-            for i in range(count):
-                real_part = Hout[i * 2]
-                imag_part = Hout[i * 2 + 1]
-                magnitudes[i] = math.sqrt(real_part**2 + imag_part**2)
-
-            half = count // 2
-            magnitudes = np.flip(magnitudes)
-            magnitudes[:half] = np.flip(magnitudes[:half])
-            magnitudes[half:] = np.flip(magnitudes[half:])
-
-            return magnitudes
-
-        except Exception as e:
-            self.logger.failure(__file__, "<extract_magnitude_data>: failed to return fft")
-            print(f"Magnitude extraction error: {e}")
-            raise
 
     def reset(self):
         self.internal_queue.clear()

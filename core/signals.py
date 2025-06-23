@@ -3,7 +3,7 @@
 # instantiate in main and connect signals to slots
 
 from PyQt5.QtCore import QObject, pyqtSignal
-import numpy as np
+
 
 class Signals(QObject):
     # Data Signals
@@ -20,6 +20,5 @@ class Signals(QObject):
     logs = pyqtSignal(str)                          # From logger to main_window
 
     # Control Signals
-
     start_app = pyqtSignal()                        # From UI to main
     stop_app = pyqtSignal()                         # From UI to main

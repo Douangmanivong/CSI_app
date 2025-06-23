@@ -1,4 +1,4 @@
-# io/csi_receiver.py
+# csi_io/csi_receiver.py
 # TCP receiver for CSI data packets from OpenWRT router
 # receives raw bytes and emits signal to parser
 # logs connection status using logger instance
@@ -7,6 +7,7 @@ import socket
 import time
 from PyQt5.QtCore import QThread
 from config.settings import HOST_ID, PORT
+
 
 class CSIReceiver(QThread):
     def __init__(self, signals, logger, stop_event):

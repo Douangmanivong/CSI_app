@@ -1,7 +1,12 @@
-1st draft of app structure, cpp compilation and execution is faster thus only using signals and slots on QT. For python coding only, multi-threading is necessary to allow real-time reception, processing and display of CSI data spectrum. 
+# Application CSI Parser - README
 
-TCP loop, parsing, processing and UI are in separate threads to allow real-time. Buffer is used to store CSI data between parsing and processing. Processing is in a thread to allow the possibility to add AI model for better detection in the future.
+## Overview
+This application receives CSI packets over TCP, parses them, and processes them in real time.
+It supports modular processing (e.g., magnitude for now, phase and Doppler in the future) and displays live data using a PyQt5 interface.
 
+## Architecture
+
+```
 ┌────────────────────┐                           ┌────────────────────┐
 │  Raspberry Pi 4    │ ────── ICMP PING ────────►│  OpenWRT Router    │
 │ (sends pings)      │                           │ (Nexmon CSI tool)  │
@@ -16,37 +21,35 @@ TCP loop, parsing, processing and UI are in separate threads to allow real-time.
 │  - connect_tcp()                                                             │
 │  - receive_loop()  ─────────────────────────────────────┐                    │
 │       ↓ raw bytes                                       │                    │
-│   signals.raw_data_received.emit(data)  ────────────────┘ (pyqtSignal)       │
+│   signals.csi_data.emit(data)  ─────────────────────────┘ (pyqtSignal)       │
 └──────────────────────────────────────────────────────────────────────────────┘
                                                                  ▼
-                                                       Signal: raw_data_received
+                                                       Signal: csi_data
                                                                  ▼
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│                           processing/parser.py                               │
-│                        class CSIParser (QThread)                             │
+│                   processing/bcm4366c0_parser.py                             │
+│                  class BCM4366C0Parser (CSIParser)                           │
 │ - on_new_data(data):                                                         │
-│     → process_pcap(data)                                                     │
-│     → parse_to_numpy()                                                       │
-│     → buffer.put(data_numpy) → CircularBuffer                                │
+│     → process_queued_data()                                                  │
+│     → extract_csi_data()                                                     │
+│     → buffer.put(csi_packet) → CircularBuffer                                │
 └──────────────────────────────────────────────────────────────────────────────┘
 
  ┌──────────────────────────┐         ┌─────────────────────────────┐
  │   CircularBuffer         │◄────────┤      QMutex                 │
  │ (thread-safe FIFO queue) │         │ (mutex for thread sync)     │
  └──────────────────────────┘         └─────────────────────────────┘
-
                                  ▲
                                  │ mutex.lock()
                                  ▼
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│                      processing/csi_processor.py                             │
-│                    class CSIProcessor (QThread)                              │
-│  - run(): while True                                                         │
+│                processing/csi_magnitude_processor.py                          │
+│               class CSIMagnitudeProcessor (CSIProcessor)                     │
+│  - run(): while not stopped                                                  │
 │     → buffer.get_batch() (mutex protected)                                   │
-│     → process_fft(batch)                                                     │
+│     → extract_magnitudes(csi_packet)                                         │
 │     → detect_thresholds()                                                    │
-│     → run_model(batch)  ←  (AI model in the future)                          │
-│     → signals.fft_data.emit(spectrogram)                                     │
+│     → signals.fft_data.emit(spectrum)                                        │
 │     → signals.threshold_exceeded.emit()                                      │
 └──────────────────────────────────────────────────────────────────────────────┘
                                 │                ▲
@@ -67,18 +70,45 @@ TCP loop, parsing, processing and UI are in separate threads to allow real-time.
 │                           class AppLogger                                    │
 │ - success(), failure(), log() → signals.logs.emit(message)                   │
 └──────────────────────────────────────────────────────────────────────────────┘
+```
 
-Hardware:
-- Raspberry Pi 4 : sends ICMP pings to the router
-- Router (OpenWRT + Nexmon CSI): emits CSI via TCP
-- Laptop (runs the app): receives, processes and displays CSI data
+### Threads
+- CSIReceiver: receives binary packets from network
+- CSIParser: parses packets, extracts timestamp and CSI raw data
+- CSIProcessor (abstract): interface for CSI processing (e.g., threshold detection)
+- CSIMagnitudeProcessor: detects magnitude peaks and sends fft data
 
-Shared Tools:
-- `CircularBuffer`: connects Parser → Processor
-- `QMutex`: ensures safe concurrent access to buffer
+### Signals
+- csi_data
+- fft_data
+- logs
+- start_app
+- stop_app
+- threshold_exceeded
+- threshold_value
 
-Threads:
-- CSIReceiver (QThread)
-- CSIParser (QThread)
-- CSIProcessor (QThread)
-- MainWindow (Qt main GUI thread)
+### Methods
+- run
+- on_new_data
+- setup
+- reset
+- process_queued_data
+- parse_time
+- is_valid_subcarrier
+- is_valid_antenna
+- process_batch
+- _detect_thresholds
+- _emit_fft_data
+- update_threshold
+
+## Usage
+```bash
+python main.py
+```
+
+## Dependencies
+See `requirements.txt`.
+
+## Note
+The CSIProcessor base class is now abstract, extend it for new processing types like Doppler or phase analysis.
+CSIParser is generic and emits raw CSI data, leaving interpretation to the processor.
