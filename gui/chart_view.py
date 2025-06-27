@@ -1,14 +1,11 @@
 # gui/chart_view.py
 # chartView displays CSI spectrogram data received from processor via fft_data signal
-# adapted from C++ version to Python with PyQt5 and QtCharts
-# instantiate in main_window and connect fft_data signal to update_chart slot
-# uses logger for debugging and maintains sliding window of data points
-# automatically adjusts X and Y axis ranges based on incoming data
+# rewritten using pyqtgraph for high-performance rendering
+# connects to fft_data signal and plots dynamically decimated data for performance
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
-from PyQt5.QtChart import QChart, QChartView, QLineSeries, QValueAxis
-from PyQt5.QtCore import Qt, pyqtSlot
-from PyQt5.QtGui import QPainter
+from PyQt5.QtCore import pyqtSlot
+import pyqtgraph as pg
 import numpy as np
 
 
@@ -23,43 +20,25 @@ class ChartView(QWidget):
         self.logger = logger if logger else None
         self.x_width = max(x_width, 1.0)
         self.y_values = set()
+        self.t0 = None
 
-        self.chart = QChart()
-        self.line_series = QLineSeries()
-        self.axis_x = QValueAxis()
-        self.axis_y = QValueAxis()
-
-        self._setup_chart(title, x_name, y_name)
-
-        self.chart_view = QChartView(self.chart)
-        self.chart_view.setRenderHint(QPainter.Antialiasing)
+        self.data_buffer = []
+        self.plot_widget = pg.PlotWidget(title=title)
+        self.plot_widget.setBackground('w')
+        self.plot_widget.setLabel('bottom', x_name)
+        self.plot_widget.setLabel('left', y_name)
+        self.plot_widget.setYRange(200, 2000)
+        self.plot_widget.enableAutoRange(x=False, y=False)
+        self.curve = self.plot_widget.plot([], [], pen=pg.mkPen(color=(0, 0, 100), width=1))  # Dark blue
 
         layout = QVBoxLayout(self)
-        layout.addWidget(self.chart_view)
+        layout.addWidget(self.plot_widget)
         layout.setContentsMargins(0, 0, 0, 0)
+
+        self.MAX_BUFFER_SIZE = 2000
 
         if self.logger:
             self.logger.success(__file__, "<__init__>: chart initialized")
-
-    def _setup_chart(self, title, x_name, y_name):
-        self.chart.addSeries(self.line_series)
-        self.chart.legend().hide()
-        self.chart.setTitle(title)
-
-        self.chart.addAxis(self.axis_x, Qt.AlignBottom)
-        self.chart.addAxis(self.axis_y, Qt.AlignLeft)
-
-        self.line_series.attachAxis(self.axis_x)
-        self.line_series.attachAxis(self.axis_y)
-
-        self.axis_x.setTitleText(x_name)
-        self.axis_y.setTitleText(y_name)
-
-        self.axis_x.setRange(0, 1)
-        self.axis_y.setRange(200, 2000)
-
-        if self.logger:
-            self.logger.success(__file__, "<_setup_chart>: chart setup complete")
 
     @pyqtSlot(dict)
     def update_chart(self, fft_data):
@@ -73,67 +52,45 @@ class ChartView(QWidget):
                     self.logger.failure(__file__, f"<update_chart>: Invalid data format - keys={list(fft_data.keys())}")
                 return
 
-            self._append_data_point(x, y)
+            if self.t0 is None:
+                self.t0 = x
 
-            if self.logger:
-                self.logger.success(__file__, "<update_chart>: point added")
+            relative_x = max(0, x - self.t0)
+
+            self.data_buffer.append((relative_x, y))
+            self.y_values.add(y)
+
+            if len(self.data_buffer) > self.MAX_BUFFER_SIZE:
+                self.data_buffer = self.data_buffer[-self.MAX_BUFFER_SIZE:]
+
+            x_latest = self.data_buffer[-1][0]
+            visible_window = [pt for pt in self.data_buffer if x_latest - self.x_width <= pt[0] <= x_latest]
+
+            plot_step = max(1, len(visible_window) // 500)
+            filtered = visible_window[::plot_step]
+
+            if filtered:
+                x_vals, y_vals = zip(*filtered)
+                self.curve.setData(x_vals, y_vals)
+                self.plot_widget.setXRange(max(0, x_latest - self.x_width), x_latest)
+
+                if self.y_values:
+                    y_min = min(self.y_values)
+                    y_max = max(self.y_values)
+                    y_buffer = (y_max - y_min) * 0.02 if y_max != y_min else abs(y_max) * 0.1
+                    self.plot_widget.setYRange(y_min - y_buffer, y_max + y_buffer)
 
         except Exception as e:
             if self.logger:
                 self.logger.failure(__file__, f"<update_chart>: Exception occurred - {str(e)}")
 
-    def _append_data_point(self, x, y):
-        if x < self.axis_x.min():
-            self.clear()
-
-        self.line_series.append(x, y)
-
-        x_lower = x - self.x_width
-        points = self.line_series.points()
-        points_to_remove = 0
-
-        for i, point in enumerate(points):
-            if point.x() < x_lower:
-                self.y_values.discard(point.y())
-                points_to_remove += 1
-            else:
-                x_lower = point.x()
-                break
-
-        if points_to_remove > 0:
-            self.line_series.removePoints(0, points_to_remove)
-
-        self.axis_x.setRange(x_lower, x)
-        self._update_y_range(y)
-
-        if self.logger:
-            self.logger.success(__file__, "<_append_data_point>: data added")
-
-    def _update_y_range(self, new_y):
-        self.y_values.add(new_y)
-
-        if len(self.y_values) > 0:
-            y_min = min(self.y_values)
-            y_max = max(self.y_values)
-
-            if y_max != y_min:
-                y_buffer = (y_max - y_min) * 0.02
-            else:
-                y_buffer = abs(y_max) * 0.1 if y_max != 0 else 1.0
-
-            self.axis_y.setRange(y_min - y_buffer, y_max + y_buffer)
-
-            if self.logger:
-                self.logger.success(__file__, "<_update_y_range>: updated")
-
     def clear(self):
-        self.line_series.clear()
+        self.data_buffer.clear()
         self.y_values.clear()
-        self.axis_x.setRange(0, 1)
-        self.axis_y.setRange(200, 2000)
-
-        if self.logger:
-            self.logger.success(__file__, "<clear>: chart cleared")
+        self.curve.clear()
+        self.plot_widget.setXRange(0, 1)
+        self.plot_widget.setYRange(200, 2000)
+        self.t0 = None
 
     def set_x_width(self, width):
         self.x_width = max(width, 1.0)
@@ -141,12 +98,12 @@ class ChartView(QWidget):
             self.logger.success(__file__, f"<set_x_width>: new width = {self.x_width}")
 
     def get_point_count(self):
-        count = len(self.line_series.points())
+        count = len(self.data_buffer)
         if self.logger:
             self.logger.success(__file__, f"<get_point_count>: count = {count}")
         return count
 
     def set_title(self, title):
-        self.chart.setTitle(title)
+        self.plot_widget.setTitle(title)
         if self.logger:
             self.logger.success(__file__, f"<set_title>: title set to {title}")
