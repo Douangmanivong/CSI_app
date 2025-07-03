@@ -4,6 +4,7 @@
 # applies threshold detection on magnitudes per subcarrier
 # emits fft_data signal for chart visualization
 # emits threshold_exceeded signal when thresholds are breached
+# moving average filtering
 
 import numpy as np
 import time
@@ -11,12 +12,14 @@ import math
 import struct
 from config.settings import THRESHOLD_VALUE, THRESHOLD_DISABLED
 from processing.csi_processor import CSIProcessor
-
+from core.buffer import CircularBuffer  # Assuming same class used
 
 class CSIMagnitudeProcessor(CSIProcessor):
-    def __init__(self, signals, buffer, mutex, logger, stop_event, batch_size=10):
+    def __init__(self, signals, buffer, mutex, logger, stop_event, batch_size=10, ma_window=5):
         super().__init__(signals, buffer, mutex, logger, stop_event, batch_size)
         self.threshold_value = THRESHOLD_VALUE
+        self.ma_window = ma_window
+        self.ma_buffer = []
 
     def process_batch(self, data_batch, time_batch):
         try:
@@ -38,7 +41,16 @@ class CSIMagnitudeProcessor(CSIProcessor):
                     self.logger.failure(__file__, "<process_batch>: no magnitudes found")
                 return
 
-            magnitude_matrix = np.array(all_magnitudes)
+            for spectrum in all_magnitudes:
+                self.ma_buffer.append(spectrum)
+                if len(self.ma_buffer) > self.ma_window:
+                    self.ma_buffer.pop(0)
+
+            if len(self.ma_buffer) < self.ma_window:
+                return
+
+            magnitude_matrix = np.mean(np.stack(self.ma_buffer), axis=0, keepdims=True)
+
             self._detect_thresholds(magnitude_matrix, latest_timestamp)
             self._emit_fft_data(magnitude_matrix, latest_timestamp)
 

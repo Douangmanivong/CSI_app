@@ -56,7 +56,7 @@ def main():
     csi_parser = CSIParser(signals, logger, buffer, buffer_mutex, stop_event)
 
     # Processor and receiver threads
-    csi_processor = CSIMagnitudeProcessor(signals, buffer, buffer_mutex, logger, stop_event)
+    csi_processor = CSIMagnitudeProcessor(signals, buffer, buffer_mutex, logger, stop_event, Settings.MA_WINDOW)
     csi_receiver = CSIReceiver(signals, logger, stop_event)
 
     # Connect signals and slots
