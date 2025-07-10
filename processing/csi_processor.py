@@ -20,12 +20,12 @@ class CSIProcessor(QThread):
         self.batch_size = batch_size
         self.t0 = None
 
-        if self.logger:
-            self.logger.success(__file__, "<__init__>")
+        # if self.logger:
+        #     self.logger.success(__file__, "<__init__>")
 
     def run(self):
-        if self.logger:
-            self.logger.success(__file__, "<run>: processing")
+        # if self.logger:
+        #     self.logger.success(__file__, "<run>: processing")
 
         while not self.stop_event.is_set():
             try:

@@ -65,8 +65,8 @@ def main():
     # Show UI
     main_window.show()
 
-    if logger:
-        logger.success(__file__, "<main>")
+    # if logger:
+    #     logger.success(__file__, "<main>")
 
     return app.exec_()
 
@@ -79,38 +79,38 @@ def connect_signals(signals, main_window, csi_processor):
     signals.start_app.connect(start_threads)
     signals.stop_app.connect(stop_threads)
 
-    if logger:
-        logger.success(__file__, "<connect_signals>")
+    # if logger:
+    #     logger.success(__file__, "<connect_signals>")
 
 
 def start_threads():
     global threads_running, stop_event, csi_receiver, csi_processor, csi_parser, logger
 
     if threads_running:
-        if logger:
-            logger.success(__file__, "<start_threads>: already running")
+        # if logger:
+        #     logger.success(__file__, "<start_threads>: already running")
         return
     try:
         stop_event.clear()
 
         if not csi_receiver.isRunning():
             csi_receiver.start()
-            if logger:
-                logger.success(__file__, "<start_threads>: csi_receiver started")
+            # if logger:
+            #     logger.success(__file__, "<start_threads>: csi_receiver started")
 
         if not csi_processor.isRunning():
             csi_processor.start()
-            if logger:
-                logger.success(__file__, "<start_threads>: csi_processor started")
+            # if logger:
+            #     logger.success(__file__, "<start_threads>: csi_processor started")
 
         if not csi_parser.isRunning():
             csi_parser.start()
-            if logger:
-                logger.success(__file__, "<start_threads>: csi_parser started")
+            # if logger:
+            #     logger.success(__file__, "<start_threads>: csi_parser started")
 
         threads_running = True
-        if logger:
-            logger.success(__file__, "<start_threads>: all threads started")
+        # if logger:
+        #     logger.success(__file__, "<start_threads>: all threads started")
 
     except Exception as e:
         if logger:
@@ -125,30 +125,30 @@ def stop_threads():
         return
     try:
         stop_event.set()
-        if logger:
-            logger.success(__file__, "<stop_threads>: stop_event set")
+        # if logger:
+        #     logger.success(__file__, "<stop_threads>: stop_event set")
 
         if csi_receiver.isRunning():
             if not csi_receiver.wait(3000):
                 csi_receiver.terminate()
-            if logger:
-                logger.success(__file__, "<stop_threads>: csi_receiver stopped")
+            # if logger:
+            #     logger.success(__file__, "<stop_threads>: csi_receiver stopped")
 
         if csi_processor.isRunning():
             if not csi_processor.wait(3000):
                 csi_processor.terminate()
-            if logger:
-                logger.success(__file__, "<stop_threads>: csi_processor stopped")
+            # if logger:
+            #     logger.success(__file__, "<stop_threads>: csi_processor stopped")
 
         if csi_parser.isRunning():
             if not csi_parser.wait(3000):
                 csi_parser.terminate()
-            if logger:
-                logger.success(__file__, "<stop_threads>: csi_parser stopped")
+            # if logger:
+            #     logger.success(__file__, "<stop_threads>: csi_parser stopped")
 
         threads_running = False
-        if logger:
-            logger.success(__file__, "<stop_threads>: all threads stopped")
+        # if logger:
+        #     logger.success(__file__, "<stop_threads>: all threads stopped")
 
     except Exception as e:
         if logger:

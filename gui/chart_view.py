@@ -37,8 +37,8 @@ class ChartView(QWidget):
 
         self.MAX_BUFFER_SIZE = 2000
 
-        if self.logger:
-            self.logger.success(__file__, "<__init__>: chart initialized")
+        # if self.logger:
+        #     self.logger.success(__file__, "<__init__>: chart initialized")
 
     @pyqtSlot(dict)
     def update_chart(self, fft_data):
@@ -94,16 +94,16 @@ class ChartView(QWidget):
 
     def set_x_width(self, width):
         self.x_width = max(width, 1.0)
-        if self.logger:
-            self.logger.success(__file__, f"<set_x_width>: new width = {self.x_width}")
+        # if self.logger:
+        #     self.logger.success(__file__, f"<set_x_width>: new width = {self.x_width}")
 
     def get_point_count(self):
         count = len(self.data_buffer)
-        if self.logger:
-            self.logger.success(__file__, f"<get_point_count>: count = {count}")
+        # if self.logger:
+        #     self.logger.success(__file__, f"<get_point_count>: count = {count}")
         return count
 
     def set_title(self, title):
         self.plot_widget.setTitle(title)
-        if self.logger:
-            self.logger.success(__file__, f"<set_title>: title set to {title}")
+        # if self.logger:
+        #     self.logger.success(__file__, f"<set_title>: title set to {title}")

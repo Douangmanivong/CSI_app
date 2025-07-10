@@ -16,8 +16,8 @@ class CSIReceiver(QThread):
         self.logger = logger
         self.stop_event = stop_event
 
-        if self.logger:
-            self.logger.success(__file__, "<__init__>")
+        # if self.logger:
+        #     self.logger.success(__file__, "<__init__>")
 
     def run(self):
         try:
@@ -26,8 +26,8 @@ class CSIReceiver(QThread):
                 server_socket.bind((HOST_ID, PORT))
                 server_socket.listen(1)
 
-                if self.logger:
-                    self.logger.success(__file__, "<run>: server started")
+                # if self.logger:
+                #     self.logger.success(__file__, "<run>: server started")
 
                 last_no_client_log = time.time()
 
@@ -43,8 +43,8 @@ class CSIReceiver(QThread):
                             last_no_client_log = now
                         continue
 
-                    if self.logger:
-                        self.logger.success(__file__, "<run>: client connected")
+                    # if self.logger:
+                    #     self.logger.success(__file__, "<run>: client connected")
 
                     with client_socket:
                         last_data_time = time.time()
@@ -63,8 +63,8 @@ class CSIReceiver(QThread):
                                 self.signals.csi_data.emit(packet, now)
                                 last_data_time = now
 
-                                if self.logger:
-                                    self.logger.success(__file__, "<run>: data received")
+                                # if self.logger:
+                                #     self.logger.success(__file__, "<run>: data received")
 
                             except socket.error:
                                 if self.logger:

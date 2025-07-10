@@ -4,22 +4,23 @@
 # applies threshold detection on magnitudes per subcarrier
 # emits fft_data signal for chart visualization
 # emits threshold_exceeded signal when thresholds are breached
-# moving average filtering
+# moving average filtering using deque for performance
 
 import numpy as np
 import time
 import math
 import struct
-from config.settings import THRESHOLD_VALUE, THRESHOLD_DISABLED
+from collections import deque
+from config.settings import THRESHOLD_VALUE, THRESHOLD_DISABLED, SUBCARRIER
 from processing.csi_processor import CSIProcessor
-from core.buffer import CircularBuffer  # Assuming same class used
+from core.buffer import CircularBuffer
 
 class CSIMagnitudeProcessor(CSIProcessor):
     def __init__(self, signals, buffer, mutex, logger, stop_event, batch_size=10, ma_window=5):
         super().__init__(signals, buffer, mutex, logger, stop_event, batch_size)
         self.threshold_value = THRESHOLD_VALUE
         self.ma_window = ma_window
-        self.ma_buffer = []
+        self.ma_buffer = deque(maxlen=ma_window)
 
     def process_batch(self, data_batch, time_batch):
         try:
@@ -28,8 +29,8 @@ class CSIMagnitudeProcessor(CSIProcessor):
 
             if self.t0 is None:
                 self.t0 = latest_timestamp
-                if self.logger:
-                    self.logger.success(__file__, f"<process_batch>: t0 initialized at {self.t0}")
+                # if self.logger:
+                #     self.logger.success(__file__, f"<process_batch>: t0 initialized at {self.t0}")
 
             for csi_packet, _ in zip(data_batch, time_batch):
                 if isinstance(csi_packet, dict) and 'raw_csi' in csi_packet:
@@ -43,8 +44,6 @@ class CSIMagnitudeProcessor(CSIProcessor):
 
             for spectrum in all_magnitudes:
                 self.ma_buffer.append(spectrum)
-                if len(self.ma_buffer) > self.ma_window:
-                    self.ma_buffer.pop(0)
 
             if len(self.ma_buffer) < self.ma_window:
                 return
@@ -63,18 +62,15 @@ class CSIMagnitudeProcessor(CSIProcessor):
             return
 
         try:
-            mean_magnitudes = np.mean(magnitude_matrix, axis=0)
-            exceeded_mask = mean_magnitudes > self.threshold_value
-
-            if np.any(exceeded_mask):
-                max_exceeded_value = np.max(mean_magnitudes[exceeded_mask])
+            magnitude_value = magnitude_matrix[0, SUBCARRIER]
+            if magnitude_value > self.threshold_value:
                 relative_time = timestamp - self.t0 if self.t0 else timestamp
-                message = f"value={max_exceeded_value:.2f}, time={relative_time:.2f}s"
+                message = f"value={magnitude_value:.2f}, time={relative_time:.2f}s"
 
                 self.signals.threshold_exceeded.emit(message)
 
-                if self.logger:
-                    self.logger.success(__file__, "<_detect_thresholds>: threshold exceeded")
+                # if self.logger:
+                #     self.logger.success(__file__, f"<_detect_thresholds>: threshold exceeded on subcarrier {SUBCARRIER}")
 
         except Exception as e:
             if self.logger:
@@ -84,18 +80,18 @@ class CSIMagnitudeProcessor(CSIProcessor):
         try:
             if self.t0 is None:
                 self.t0 = timestamp
-                if self.logger:
-                    self.logger.success(__file__, f"<_emit_fft_data>: t0 initialized at {self.t0}")
+                # if self.logger:
+                #     self.logger.success(__file__, f"<_emit_fft_data>: t0 initialized at {self.t0}")
 
             relative_time = timestamp - self.t0
-            mean_spectrum = np.mean(magnitude_matrix, axis=0)
+            selected_magnitude = magnitude_matrix[0, SUBCARRIER]
             self.signals.fft_data.emit({
                 'time': relative_time,
-                'magnitude': float(np.mean(mean_spectrum))
+                'magnitude': float(selected_magnitude)
             })
 
-            if self.logger:
-                self.logger.success(__file__, "<_emit_fft_data>: data sent to chart")
+            # if self.logger:
+            #     self.logger.success(__file__, f"<_emit_fft_data>: subcarrier {SUBCARRIER} magnitude sent to chart")
 
         except Exception as e:
             if self.logger:
@@ -108,8 +104,8 @@ class CSIMagnitudeProcessor(CSIProcessor):
             else:
                 self.threshold_value = float(new_threshold)
 
-            if self.logger:
-                self.logger.success(__file__, "<update_threshold>: new threshold")
+            # if self.logger:
+            #     self.logger.success(__file__, "<update_threshold>: new threshold")
 
         except Exception as e:
             if self.logger:
@@ -131,7 +127,7 @@ class CSIMagnitudeProcessor(CSIProcessor):
             k_tof_unpack_sgn_mask = 1 << 31
             ri_mask = (1 << (M - 1)) - 1
             E_mask = (1 << E) - 1
-            sgnr_mask = 1 << (E + 2 * M - 1)
+            sgnr_mask = (1 << (E + 2 * M - 1))
             sgni_mask = sgnr_mask >> M
 
             He = [0] * 256

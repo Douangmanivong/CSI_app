@@ -37,10 +37,10 @@ class CSIParser(QThread):
         self.internal_buffer = bytearray()
 
         self.signals.csi_data.connect(self.on_new_data)
-        self.logger.success(__file__, "<__init__>")
+        # self.logger.success(__file__, "<__init__>")
 
     def run(self):
-        self.logger.success(__file__, "<run>: parsing")
+        # self.logger.success(__file__, "<run>: parsing")
         while not self.stop_event.is_set():
             if self.internal_queue:
                 self.process_queued_data()
@@ -51,7 +51,7 @@ class CSIParser(QThread):
             if len(data) >= 4:
                 magic_number = struct.unpack('<I', data[:4])[0]
                 if self.is_setup_complete and magic_number in (self.MAGIC_NUM_MICRO, self.MAGIC_NUM_NANO):
-                    self.logger.success(__file__, "<on_new_data>: reset triggered")
+                    # self.logger.success(__file__, "<on_new_data>: reset triggered")
                     self.reset()
             self.internal_queue.append(data)
             if not self.is_setup_complete:
@@ -73,7 +73,7 @@ class CSIParser(QThread):
                 packet = self.internal_queue.popleft()
                 self.internal_queue.appendleft(packet[24:])
             self.is_setup_complete = True
-            self.logger.success(__file__, "<setup>: MN and format ok")
+            # self.logger.success(__file__, "<setup>: MN and format ok")
         except Exception as e:
             self.logger.failure(__file__, "<setup>: setup failed")
             print(f"Setup error: {e}")
@@ -122,7 +122,7 @@ class CSIParser(QThread):
         self.time_shift_power = 0
         self.start_time = 0.0
         self.is_setup_complete = False
-        self.logger.success(__file__, "<reset>: reset done")
+        # self.logger.success(__file__, "<reset>: reset done")
 
     def get_start_time(self) -> float:
         return self.start_time
