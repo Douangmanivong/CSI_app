@@ -6,7 +6,7 @@
 import socket
 import time
 from PyQt5.QtCore import QThread
-from config.settings import HOST_ID, PORT
+from config.settings import PORT
 
 
 class CSIReceiver(QThread):
@@ -20,14 +20,15 @@ class CSIReceiver(QThread):
         #     self.logger.success(__file__, "<__init__>")
 
     def run(self):
+        self.logger.success(__file__, "<run>: waiting for client on TCP socket")
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
                 server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                server_socket.bind((HOST_ID, PORT))
+                server_socket.bind(("0.0.0.0", PORT))
                 server_socket.listen(1)
 
-                # if self.logger:
-                #     self.logger.success(__file__, "<run>: server started")
+                if self.logger:
+                    self.logger.success(__file__, "<run>: server started")
 
                 last_no_client_log = time.time()
 
@@ -35,6 +36,8 @@ class CSIReceiver(QThread):
                     server_socket.settimeout(1.0)
                     try:
                         client_socket, addr = server_socket.accept()
+                        if self.logger:
+                            self.logger.success(__file__, f"<run>: client {addr} connected")
                     except socket.timeout:
                         now = time.time()
                         if now - last_no_client_log >= 10:
@@ -43,8 +46,8 @@ class CSIReceiver(QThread):
                             last_no_client_log = now
                         continue
 
-                    # if self.logger:
-                    #     self.logger.success(__file__, "<run>: client connected")
+                    if self.logger:
+                        self.logger.success(__file__, "<run>: client connected")
 
                     with client_socket:
                         last_data_time = time.time()

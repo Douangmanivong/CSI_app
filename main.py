@@ -7,17 +7,17 @@
 
 import os
 import sys
-# Force the correct Qt plugin path for PyQt5 to find qwindows.dll
+import threading
+from PyQt5.QtWidgets import QApplication
+from PyQt5.QtCore import QMutex
+
+# Qt plugin path for Windows
 os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = os.path.join(
     os.environ.get("CONDA_PREFIX", ""),
     "Library",
     "plugins",
     "platforms"
 )
-
-import threading
-from PyQt5.QtWidgets import QApplication
-from PyQt5.QtCore import QMutex
 
 from core.signals import Signals
 from core.buffer import CircularBuffer
@@ -27,134 +27,78 @@ from csi_io.csi_receiver import CSIReceiver
 from csi_io.logger import Logger
 from processing.csi_parser import CSIParser
 import config.settings as Settings
+from remote.rpi_device import RPiDevice
+from remote.router_device import RouterDevice
 
-# Global thread management variables
+# Thread management state
 stop_event = threading.Event()
-threads_running = False
-csi_receiver = None
-csi_processor = None
-csi_parser = None
-logger = None
-
+threads = {}
 
 def main():
-    global csi_receiver, csi_processor, csi_parser, logger
+    global threads
 
     app = QApplication(sys.argv)
 
-    # Shared resources
+    # Shared instances
     signals = Signals()
-    buffer = CircularBuffer(Settings.BUFFER_SIZE)
-    buffer_mutex = QMutex()
     logger = Logger()
+    buffer = CircularBuffer(Settings.BUFFER_SIZE)
+    mutex = QMutex()
 
-    # UI (main thread)
+    # UI
     main_window = MainWindow(signals, logger)
     logger.logs.connect(main_window.update_console)
 
-    # Parser thread
-    csi_parser = CSIParser(signals, logger, buffer, buffer_mutex, stop_event)
+    # Threads
+    threads = {
+        "receiver": CSIReceiver(signals, logger, stop_event),
+        "parser": CSIParser(signals, logger, buffer, mutex, stop_event),
+        "processor": CSIMagnitudeProcessor(signals, buffer, mutex, logger, stop_event, Settings.MA_WINDOW),
+        "rpi": RPiDevice(signals, stop_event, logger),
+        "router": RouterDevice(signals, stop_event, logger)
+    }
 
-    # Processor and receiver threads
-    csi_processor = CSIMagnitudeProcessor(signals, buffer, buffer_mutex, logger, stop_event, Settings.MA_WINDOW)
-    csi_receiver = CSIReceiver(signals, logger, stop_event)
-
-    # Connect signals and slots
-    connect_signals(signals, main_window, csi_processor)
+    # Signal/slot wiring
+    connect_signals(signals, main_window)
 
     # Show UI
     main_window.show()
-
-    # if logger:
-    #     logger.success(__file__, "<main>")
-
     return app.exec_()
 
-
-def connect_signals(signals, main_window, csi_processor):
-    signals.threshold_value.connect(csi_processor.update_threshold)
+def connect_signals(signals, main_window):
+    # Processing
+    signals.threshold_value.connect(threads["processor"].update_threshold)
     signals.threshold_exceeded.connect(main_window.show_threshold_alert)
     signals.fft_data.connect(main_window.chart_view.update_chart)
     signals.logs.connect(main_window.update_console)
+
+    # App control
     signals.start_app.connect(start_threads)
     signals.stop_app.connect(stop_threads)
 
-    # if logger:
-    #     logger.success(__file__, "<connect_signals>")
+    # Remote devices control
+    signals.connect_ping_device.connect(threads["rpi"].request_connect)
+    signals.start_ping.connect(threads["rpi"].request_start_ping)
+    signals.stop_ping.connect(threads["rpi"].request_stop_ping)
+
+    signals.connect_router.connect(threads["router"].request_connect)
+    signals.start_stream.connect(threads["router"].request_start_stream)
+    signals.stop_stream.connect(threads["router"].request_stop_stream)
 
 
 def start_threads():
-    global threads_running, stop_event, csi_receiver, csi_processor, csi_parser, logger
-
-    if threads_running:
-        # if logger:
-        #     logger.success(__file__, "<start_threads>: already running")
-        return
-    try:
-        stop_event.clear()
-
-        if not csi_receiver.isRunning():
-            csi_receiver.start()
-            # if logger:
-            #     logger.success(__file__, "<start_threads>: csi_receiver started")
-
-        if not csi_processor.isRunning():
-            csi_processor.start()
-            # if logger:
-            #     logger.success(__file__, "<start_threads>: csi_processor started")
-
-        if not csi_parser.isRunning():
-            csi_parser.start()
-            # if logger:
-            #     logger.success(__file__, "<start_threads>: csi_parser started")
-
-        threads_running = True
-        # if logger:
-        #     logger.success(__file__, "<start_threads>: all threads started")
-
-    except Exception as e:
-        if logger:
-            logger.failure(__file__, "<start_threads>: exception occurred")
-        stop_threads()
-
+    stop_event.clear()
+    for key in threads:
+        if not threads[key].isRunning():
+            threads[key].start()
 
 def stop_threads():
-    global threads_running, stop_event, csi_receiver, csi_processor, csi_parser, logger
-
-    if not threads_running:
-        return
-    try:
-        stop_event.set()
-        # if logger:
-        #     logger.success(__file__, "<stop_threads>: stop_event set")
-
-        if csi_receiver.isRunning():
-            if not csi_receiver.wait(3000):
-                csi_receiver.terminate()
-            # if logger:
-            #     logger.success(__file__, "<stop_threads>: csi_receiver stopped")
-
-        if csi_processor.isRunning():
-            if not csi_processor.wait(3000):
-                csi_processor.terminate()
-            # if logger:
-            #     logger.success(__file__, "<stop_threads>: csi_processor stopped")
-
-        if csi_parser.isRunning():
-            if not csi_parser.wait(3000):
-                csi_parser.terminate()
-            # if logger:
-            #     logger.success(__file__, "<stop_threads>: csi_parser stopped")
-
-        threads_running = False
-        # if logger:
-        #     logger.success(__file__, "<stop_threads>: all threads stopped")
-
-    except Exception as e:
-        if logger:
-            logger.failure(__file__, "<stop_threads>: exception occurred")
-        threads_running = False
-
+    stop_event.set()
+    for key in threads:
+        thread = threads[key]
+        if thread.isRunning():
+            if not thread.wait(3000):
+                thread.terminate()
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -83,17 +83,17 @@ class MainWindow(QMainWindow):
         try:
             self.thresholdSlider.valueChanged.connect(self._on_threshold_changed)
             self.defaultThresholdCheckBox.toggled.connect(self._on_no_threshold_toggled)
-
             self.startButton.clicked.connect(self._on_start_clicked)
             self.stopButton.clicked.connect(self._on_stop_clicked)
-
-            # if self.logger:
-            #     self.logger.success(__file__, "<_connect_ui_signals>: buttons connected")
-
+            self.rpiConnectButton.clicked.connect(self.signals.connect_ping_device.emit)
+            self.rpiStartPingButton.clicked.connect(self.signals.start_ping.emit)
+            self.rpiStopPingButton.clicked.connect(self.signals.stop_ping.emit)
+            self.routerConnectButton.clicked.connect(self.signals.connect_router.emit)
+            self.routerStartStreamButton.clicked.connect(self.signals.start_stream.emit)
+            self.routerStopStreamButton.clicked.connect(self.signals.stop_stream.emit)
         except Exception as e:
             if self.logger:
                 self.logger.failure(__file__, "<_connect_ui_signals>: failed to connect")
-
     def _on_threshold_changed(self, value):
         self.thresholdValueLabel.setText(str(value))
 
