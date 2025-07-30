@@ -1,14 +1,9 @@
 # remote/remote_device.py
-# abstract remote device controller using SSH
-# inherits QThread, class must be specialized for each remote device
-# defines methods for connecting and checking device
+# Abstract base class for remote devices controlling CSI collection
 
 from PyQt5.QtCore import QThread
-from remote.ssh_manager import SSHManager
-
-from PyQt5.QtCore import QThread
-from remote.ssh_manager import SSHManager
 from abc import ABC, abstractmethod
+from remote.ssh_manager import SSHManager
 
 class RemoteDevice(QThread):
     def __init__(self, ip, username, stop_event, password=None, keyfile=None, logger=None):
@@ -22,12 +17,33 @@ class RemoteDevice(QThread):
         self.ssh = SSHManager(ip, username, password, keyfile, logger)
         self.connected = False
 
-    @abstractmethod
-    def run(self):
-        pass
-
-    def connect(self):
+    def connect_sniffer(self):
         self.connected = self.ssh.connect()
         if not self.connected and self.logger:
-            self.logger.failure(__file__, "<connect>: SSH connection failed")
+            self.logger.failure(__file__, "<connect_to_sniffer>: SSH connection failed")
         return self.connected
+
+    @abstractmethod
+    def setup_sniffer(self):
+        pass
+
+    @abstractmethod
+    def start_stream(self):
+        pass
+
+    @abstractmethod
+    def save_data(self):
+        pass
+
+    @abstractmethod
+    def stop_stream(self):
+        pass
+
+    def disconnect_sniffer(self):
+        self.ssh.close()
+        self.connected = False
+        if self.logger:
+            self.logger.success(__file__, "<disconnect_sniffer>: SSH session closed")
+
+    def run(self):
+        pass

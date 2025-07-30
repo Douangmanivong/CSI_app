@@ -1,5 +1,0 @@
-EXP_NAME=test_tp
-CH_NO=1
-BW=20
-IF=eth5
-MAC_ADDR=d8:3a:dd:a4:0a:d1

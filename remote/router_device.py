@@ -1,110 +1,173 @@
 # remote/router_device.py
-# asus router controller using SSH
-# starts and stops CSI packet streaming to laptop via TCP
+# router device implementation for CSI collection control
 
-import os
-import subprocess
-from datetime import datetime
 from remote.remote_device import RemoteDevice
-from PyQt5.QtCore import pyqtSlot
-from config.settings import Router_IP, Router_ID, Router_PASSWORD, USE_WSL, PORT
+import config.settings as Settings
 
 class RouterDevice(RemoteDevice):
-    def __init__(self, signals, stop_event, logger=None):
-        super().__init__(Router_IP, Router_ID, stop_event, password=Router_PASSWORD, logger=logger)
-        self.signals = signals
-        self.stream_proc = None
-
-    @pyqtSlot()
-    def request_connect(self):
-        if self.logger:
-            self.logger.success(__file__, "trying to connect to Router...")
+    def __init__(self, stop_event, logger):
+        super().__init__(
+            ip=Settings.ROUTER_IP,
+            username=Settings.ROUTER_ID,
+            stop_event=stop_event,
+            password=Settings.ROUTER_PASSWORD,
+            logger=logger
+        )
+        self.nexutil_running = False
+    
+    def connect_sniffer(self):
         try:
-            self.connect()
-            if self.logger:
-                self.logger.success(__file__, "<connect>: connected to Router")
+            result = super().connect_sniffer()
+            if result and self.logger:
+                self.logger.success(__file__, f"<connect_sniffer>: connected to Router at {Settings.ROUTER_IP}")
+            return result
         except Exception as e:
             if self.logger:
-                self.logger.failure(__file__, f"<connect to router> failed: {e}")
-
-    @pyqtSlot()
-    def request_start_stream(self):
+                self.logger.failure(__file__, f"<connect_sniffer>: {str(e)}")
+            return False
+    
+    def setup_sniffer(self):
         if not self.connected:
             if self.logger:
-                self.logger.failure(__file__, "<start stream>: device not connected")
-            return
+                self.logger.failure(__file__, "<setup_sniffer>: not connected to Router")
+            return False
+        
         try:
-            self.stream_folder = new_stream_folder("csi_stream")
+            stdout, stderr = self.ssh.exec("cd /jffs && source ./setup_env")
+            
+            if "ERROR:" in stdout or stderr:
+                if self.logger:
+                    self.logger.failure(__file__, f"<setup_sniffer>: {stdout}{stderr}")
+                return False
+            
+            self.setup_done = True
             if self.logger:
-                self.logger.success(__file__, f"<start stream>: created session folder {self.stream_folder}")
-
-            cmd_meta = (
-                "source /jffs/setup_env && "
-                "echo '__PARAM__'; "
-                "echo \"AP_0_X=$AP_0_X\"; echo \"AP_0_Y=$AP_0_Y\"; echo \"AP_0_THETA=$AP_0_THETA\"; "
-                "echo \"TX_IP=$TX_IP\"; echo \"TX_ROUTER_IP=$TX_ROUTER_IP\"; echo \"PKT_TIME=$PKT_TIME\"; echo \"DURATION=$DURATION\"; "
-                "echo '__SURVEY__'; "
-                "echo \"EXP_NAME=$EXP_NAME\"; echo \"CH_NO=$CH_NO\"; echo \"BW=$BW\"; echo \"IF=$IF\"; echo \"MAC_ADDR=$MAC_ADDR\"; "
-                "echo '__TIME__'; date -Iseconds"
-            )
-            stdout, stderr = self.ssh.exec(cmd_meta)
-            if stderr:
-                self.logger.failure(__file__, f"<read setup_env stderr>: {stderr.strip()}")
-
-            sections = {"__PARAM__": [], "__SURVEY__": [], "__TIME__": []}
-            current = None
-            for line in stdout.strip().splitlines():
-                if line.strip() in sections:
-                    current = line.strip()
-                elif current:
-                    sections[current].append(line.strip())
-
-            with open(os.path.join(self.stream_folder, "param.txt"), "w") as f:
-                f.write("\n".join(sections["__PARAM__"]))
-            with open(os.path.join(self.stream_folder, "survey.txt"), "w") as f:
-                f.write("\n".join(sections["__SURVEY__"]))
-            with open(os.path.join(self.stream_folder, "time.txt"), "w") as f:
-                f.write("\n".join(sections["__TIME__"]))
-
+                self.logger.success(__file__, "<setup_sniffer>: environment setup completed")
+            return True
+            
+        except Exception as e:
             if self.logger:
-                self.logger.success(__file__, f"<start stream>: saved metadata to {self.stream_folder}")
-
-            if USE_WSL:
-                script_path = "/mnt/c/Users/douangmanivong/Desktop/stage/appliQT/remote/stream_router.sh"
-                self.stream_proc = subprocess.Popen(["wsl", script_path])
-                self.logger.success(__file__, f"<start stream>: stream launched via WSL script: {script_path}")
+                self.logger.failure(__file__, f"<setup_sniffer>: {str(e)}")
+            return False
+    
+    def start_stream(self):
+        if not self.connected:
+            if self.logger:
+                self.logger.failure(__file__, "<start_stream>: not connected to Router")
+            return False
+        
+        if not self.setup_done:
+            if self.logger:
+                self.logger.failure(__file__, "<start_stream>: setup not completed")
+            return False
+        
+        try:
+            nexutil_cmd = 'nexutil -Ieth6 -s500 -b -l34 -v "\\x0a\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00"'
+            stdout, stderr = self.ssh.exec(nexutil_cmd)
+            
+            if stderr and "error" in stderr.lower():
+                if self.logger:
+                    self.logger.failure(__file__, f"<start_stream>: nexutil failed - {stderr}")
+                return False
+            
+            stdout, stderr = self.ssh.exec("cd /jffs && source ./setup_env && source ./start_stream")
+            
+            if "SUCCESS:" not in stdout:
+                if self.logger:
+                    self.logger.failure(__file__, f"<start_stream>: {stdout}{stderr}")
+                return False
+            
+            self.stream_active = True
+            self.nexutil_running = True
+            if self.logger:
+                self.logger.success(__file__, "<start_stream>: CSI streaming started successfully")
+            return True
+            
+        except Exception as e:
+            if self.logger:
+                self.logger.failure(__file__, f"<start_stream>: {str(e)}")
+            return False
+    
+    def stop_stream(self):
+        if not self.connected:
+            if self.logger:
+                self.logger.failure(__file__, "<stop_stream>: not connected to Router")
+            return False
+        
+        try:
+            stdout, stderr = self.ssh.exec("cd /jffs && source ./setup_env && source ./stop_stream")
+            
+            self.ssh.exec("pkill -f nexutil")
+            
+            self.stream_active = False
+            self.nexutil_running = False
+            if self.logger:
+                self.logger.success(__file__, "<stop_stream>: CSI streaming stopped successfully")
+            return True
+            
+        except Exception as e:
+            if self.logger:
+                self.logger.failure(__file__, f"<stop_stream>: {str(e)}")
+            return False
+    
+    def save_data(self, laptop_ip=None, port=5000):
+        if not self.connected:
+            if self.logger:
+                self.logger.failure(__file__, "<save_data>: not connected to Router")
+            return False
+        
+        try:
+            if laptop_ip:
+                cmd = f"cd /jffs && source ./setup_env && source ./save_data {laptop_ip} {port}"
             else:
-                ssh_cmd = [
-                    "ssh",
-                    f"{Router_ID}@{Router_IP}",
-                    "source /jffs/setup_env && /jffs/tcpdump -i \"$IF\" -U -s 0 -w - icmp"
-                ]
-                nc_cmd = ["nc", "127.0.0.1", str(PORT)]
-                self.stream_proc = subprocess.Popen(
-                    ssh_cmd,
-                    stdout=subprocess.PIPE
-                )
-                self.nc_proc = subprocess.Popen(
-                    nc_cmd,
-                    stdin=self.stream_proc.stdout,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
-                )
-                self.logger.success(__file__, "<start stream>: stream piped via local SSH/NC (Linux/macOS)")
+                cmd = "cd /jffs && source ./setup_env && source ./save_data"
+            
+            stdout, stderr = self.ssh.exec(cmd)
+            
+            if "SUCCESS:" in stdout or "INFO:" in stdout:
+                if self.logger:
+                    self.logger.success(__file__, f"<save_data>: {stdout.strip()}")
+                return True
+            else:
+                if self.logger:
+                    self.logger.failure(__file__, f"<save_data>: {stdout}{stderr}")
+                return False
+            
         except Exception as e:
-            self.logger.failure(__file__, f"<start stream>: {e}")
-
-    @pyqtSlot()
-    def request_stop_stream(self):
+            if self.logger:
+                self.logger.failure(__file__, f"<save_data>: {str(e)}")
+            return False
+    
+    def disconnect_sniffer(self):
+        if not self.connected:
+            if self.logger:
+                self.logger.failure(__file__, "<disconnect_sniffer>: already disconnected")
+            return True
+        
         try:
-            if self.stream_proc:
-                self.stream_proc.terminate()
-                self.logger.success(__file__, "<stop stream>: stream process terminated")
-        except Exception as e:
-            self.logger.failure(__file__, f"<stop stream>: {e}")
+            if self.stream_active:
+                self.stop_stream()
 
-def new_stream_folder(base_dir="csi_stream"):
-    timestamp = datetime.now().strftime("stream_%Y-%m-%d_%H-%M-%S")
-    folder_path = os.path.join(base_dir, timestamp)
-    os.makedirs(folder_path, exist_ok=True)
-    return folder_path
+            stdout, stderr = self.ssh.exec("rmmod dhd && modprobe dhd")
+            
+            if stderr and "error" in stderr.lower():
+                if self.logger:
+                    self.logger.failure(__file__, f"<disconnect_sniffer>: driver reload warning - {stderr}")
+                    self.logger.info(__file__, "<disconnect_sniffer>: attempting router reboot...")
+                self.ssh.exec("reboot")
+            
+            result = super().disconnect_sniffer()
+            self.setup_done = False
+            self.nexutil_running = False
+            
+            if self.logger:
+                self.logger.success(__file__, "<disconnect_sniffer>: router disconnected and firmware restored")
+            return result
+            
+        except Exception as e:
+            if self.logger:
+                self.logger.failure(__file__, f"<disconnect_sniffer>: {str(e)}")
+            return False
+    
+    def run(self):
+        self.exec_()

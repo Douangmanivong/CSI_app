@@ -24,10 +24,10 @@ class Signals(QObject):
     stop_app = pyqtSignal()                         # From UI to main
 
     # Remote SSH Signals
-    connect_ping_device = pyqtSignal()              # From UI to connect RPi
-    start_ping = pyqtSignal()                       # From UI to start ping
-    stop_ping = pyqtSignal()                        # From UI to stop ping
-
-    connect_router = pyqtSignal()                   # From UI to connect router
-    start_stream = pyqtSignal()                     # From UI to start stream
-    stop_stream = pyqtSignal()                      # From UI to stop stream
+    toggle_ping = pyqtSignal()                      # From UI to laptop
+    connect_sniffer = pyqtSignal()                  # From UI to remote
+    setup_sniffer = pyqtSignal()                    # From UI to remote
+    start_stream = pyqtSignal()                     # From UI to remote
+    stop_stream = pyqtSignal()                      # From UI to remote
+    disconnect_sniffer = pyqtSignal()               # From UI to remote
+    save_data = pyqtSignal()                        # From UI to remote

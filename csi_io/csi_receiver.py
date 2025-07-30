@@ -1,5 +1,5 @@
 # csi_io/csi_receiver.py
-# TCP receiver for CSI data packets from OpenWRT router
+# UDP receiver for CSI data packets from Raspberry Pi (protobuf format)
 # receives raw bytes and emits signal to parser
 # logs connection status using logger instance
 
@@ -15,78 +15,64 @@ class CSIReceiver(QThread):
         self.signals = signals
         self.logger = logger
         self.stop_event = stop_event
-
-        # if self.logger:
-        #     self.logger.success(__file__, "<__init__>")
+        self.first_packet_logged = False
 
     def run(self):
-        self.logger.success(__file__, "<run>: waiting for client on TCP socket")
+        if self.logger:
+            self.logger.success(__file__, f"<run>: starting UDP listener on port {PORT}")
+
         try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
-                server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                server_socket.bind(("0.0.0.0", PORT))
-                server_socket.listen(1)
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(("0.0.0.0", PORT))
+            sock.settimeout(1.0)
 
-                if self.logger:
-                    self.logger.success(__file__, "<run>: server started")
-
-                last_no_client_log = time.time()
-
-                while not self.stop_event.is_set():
-                    server_socket.settimeout(1.0)
-                    try:
-                        client_socket, addr = server_socket.accept()
-                        if self.logger:
-                            self.logger.success(__file__, f"<run>: client {addr} connected")
-                    except socket.timeout:
-                        now = time.time()
-                        if now - last_no_client_log >= 10:
-                            if self.logger:
-                                self.logger.failure(__file__, "<run>: no client connected")
-                            last_no_client_log = now
-                        continue
-
-                    if self.logger:
-                        self.logger.success(__file__, "<run>: client connected")
-
-                    with client_socket:
-                        last_data_time = time.time()
-                        last_no_data_log = time.time()
-
-                        while not self.stop_event.is_set():
-                            try:
-                                packet = client_socket.recv(4096)
-                                now = time.time()
-
-                                if not packet:
-                                    if self.logger:
-                                        self.logger.failure(__file__, "<run>: client disconnected")
-                                    break
-
-                                self.signals.csi_data.emit(packet, now)
-                                last_data_time = now
-
-                                # if self.logger:
-                                #     self.logger.success(__file__, "<run>: data received")
-
-                            except socket.error:
-                                if self.logger:
-                                    self.logger.failure(__file__, "<run>: socket error")
-                                break
-
-                            now = time.time()
-                            if now - last_data_time >= 5 and now - last_no_data_log >= 5:
-                                if self.logger:
-                                    self.logger.failure(__file__, "<run>: no data received for 5s")
-                                last_no_data_log = now
-
-            if not self.stop_event.is_set():
-                if self.logger:
-                    self.logger.failure(__file__, "<run>: server socket closed unexpectedly")
-            else:
-                if self.logger:
-                    self.logger.success(__file__, "<run>: server stopped")
-
-        except Exception:
             if self.logger:
-                self.logger.failure(__file__, "<run>: fatal error")
+                self.logger.success(__file__, f"<run>: bound to 0.0.0.0:{PORT}")
+
+            last_packet_time = None
+            start_time = time.time()
+            last_no_data_log = start_time
+
+            while not self.stop_event.is_set():
+                current_time = time.time()
+                
+                try:
+                    packet, addr = sock.recvfrom(4096)
+
+                    if packet:
+                        if not self.first_packet_logged and self.logger:
+                            self.logger.success(__file__, f"<run>: first packet received ({len(packet)} bytes) from {addr}")
+                            self.first_packet_logged = True
+
+                        self.signals.csi_data.emit(packet, current_time)
+                        last_packet_time = current_time
+
+                except socket.timeout:
+                    pass
+                except Exception as e:
+                    if self.logger:
+                        self.logger.failure(__file__, f"<run>: socket error - {e}")
+                    break
+
+                if last_packet_time is None:
+                    time_since_start = current_time - start_time
+                    if time_since_start >= 5 and (current_time - last_no_data_log) >= 5:
+                        if self.logger:
+                            self.logger.failure(__file__, "<run>: no data received for 5s")
+                        last_no_data_log = current_time
+                else:
+                    time_since_last_packet = current_time - last_packet_time
+                    if time_since_last_packet >= 5 and (current_time - last_no_data_log) >= 5:
+                        if self.logger:
+                            self.logger.failure(__file__, "<run>: no data received for 5s")
+                        last_no_data_log = current_time
+
+            sock.close()
+
+            if self.logger:
+                self.logger.success(__file__, "<run>: UDP listener stopped")
+
+        except Exception as e:
+            if self.logger:
+                self.logger.failure(__file__, f"<run>: fatal error - {e}")

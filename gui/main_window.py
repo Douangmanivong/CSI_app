@@ -23,6 +23,7 @@ class MainWindow(QMainWindow):
         self.logger = logger
         self.chart_view = None
         self.is_running = False
+        self.ping_running = False
 
         # Load UI file
         self._load_ui()
@@ -85,15 +86,17 @@ class MainWindow(QMainWindow):
             self.defaultThresholdCheckBox.toggled.connect(self._on_no_threshold_toggled)
             self.startButton.clicked.connect(self._on_start_clicked)
             self.stopButton.clicked.connect(self._on_stop_clicked)
-            self.rpiConnectButton.clicked.connect(self.signals.connect_ping_device.emit)
-            self.rpiStartPingButton.clicked.connect(self.signals.start_ping.emit)
-            self.rpiStopPingButton.clicked.connect(self.signals.stop_ping.emit)
-            self.routerConnectButton.clicked.connect(self.signals.connect_router.emit)
-            self.routerStartStreamButton.clicked.connect(self.signals.start_stream.emit)
-            self.routerStopStreamButton.clicked.connect(self.signals.stop_stream.emit)
+            self.startStopPingButton.clicked.connect(self.signals.toggle_ping.emit)
+            self.connectSnifferButton.clicked.connect(self.signals.connect_sniffer.emit)
+            self.setupSnifferButton.clicked.connect(self.signals.setup_sniffer.emit)
+            self.startStreamButton.clicked.connect(self.signals.start_stream.emit)
+            self.stopStreamButton.clicked.connect(self.signals.stop_stream.emit)
+            self.saveDataButton.clicked.connect(self.signals.save_data.emit)  # NEW
+            self.disconnectSnifferButton.clicked.connect(self.signals.disconnect_sniffer.emit)
         except Exception as e:
             if self.logger:
                 self.logger.failure(__file__, "<_connect_ui_signals>: failed to connect")
+    
     def _on_threshold_changed(self, value):
         self.thresholdValueLabel.setText(str(value))
 

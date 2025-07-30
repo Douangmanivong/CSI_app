@@ -5,8 +5,8 @@
 # concrete subclasses should implement specific signal extraction (magnitude, phase, Doppler)
 
 from abc import ABC, abstractmethod
-import time
 from PyQt5.QtCore import QThread
+import time
 
 
 class CSIProcessor(QThread):
