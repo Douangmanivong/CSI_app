@@ -6,7 +6,6 @@
 
 from abc import ABC, abstractmethod
 from PyQt5.QtCore import QThread
-import time
 
 
 class CSIProcessor(QThread):

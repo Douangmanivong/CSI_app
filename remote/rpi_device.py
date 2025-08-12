@@ -5,8 +5,9 @@ from remote.remote_device import RemoteDevice
 from remote.ssh_manager import SSHManager
 from PyQt5.QtCore import QTimer
 import config.settings as Settings
-import os
 from datetime import datetime
+import os
+import time
 
 class RPiDevice(RemoteDevice):
     def __init__(self, stop_event, logger):
@@ -23,7 +24,10 @@ class RPiDevice(RemoteDevice):
         self.forward_timer.moveToThread(self)
         self.forward_running = False
         self.forward_process_started = False
+        self.save_enabled = False
         self.setup_done = False
+        self.current_save_dir = None
+        self.current_experiment_name = None
     
     def connect_sniffer(self):
         try:
@@ -92,14 +96,14 @@ class RPiDevice(RemoteDevice):
                     self.logger.failure(__file__, "<start_stream>: failed to create forward SSH connection")
                 return False
             
-            if self._start_forward_udp():
+            if self._start_csi_forwarder():
                 self.stream_active = True
                 if self.logger:
                     self.logger.success(__file__, "<start_stream>: CSI streaming started successfully")
                 return True
             else:
                 if self.logger:
-                    self.logger.failure(__file__, "<start_stream>: failed to start forward_udp.py")
+                    self.logger.failure(__file__, "<start_stream>: failed to start csi_forwarder.py")
                 return False
             
         except Exception as e:
@@ -107,81 +111,63 @@ class RPiDevice(RemoteDevice):
                 self.logger.failure(__file__, f"<start_stream>: {str(e)}")
             return False
         
-    def save_data(self):
-        if not self.connected:
+    def start_save(self):
+        if not self.forward_running:
             if self.logger:
-                self.logger.failure(__file__, "<save_data>: not connected to RPi")
+                self.logger.failure(__file__, "<start_save>: stream not running")
             return False
-        
+    
         try:
-            stream_dir = "stream"
-            if not os.path.exists(stream_dir):
-                os.makedirs(stream_dir)
-                if self.logger:
-                    self.logger.success(__file__, f"<save_data>: created directory {stream_dir}")
-            
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            pcap_filename = f"csi_data_{timestamp}.pcap"
-            remote_pcap = f"/tmp/{pcap_filename}"
-            local_pcap = os.path.join(stream_dir, pcap_filename)
+            experiment_name = f"experiment_{timestamp}"
+            self.current_save_dir = "csi_captures"
+            self.current_experiment_name = experiment_name
+        
+            save_control_cmd = f"echo 'ENABLE_SAVE:{self.current_save_dir}:{experiment_name}' > /tmp/csi_control"
+            stdout, stderr = self.forward_ssh.exec(save_control_cmd)
             
+            time.sleep(0.2)
+        
+            self.save_enabled = True
+        
             if self.logger:
-                self.logger.success(__file__, f"<save_data>: starting PCAP collection - {pcap_filename}")
-            
-            collect_cmd = f"sudo cspi collect -o {remote_pcap}"
-            stdout, stderr = self.ssh.exec(collect_cmd)
-            
-            if stderr and "error" in stderr.lower():
-                if self.logger:
-                    self.logger.failure(__file__, f"<save_data>: cspi collect failed - {stderr}")
-                return False
-            
-            check_cmd = f"ls -la {remote_pcap}"
-            stdout, stderr = self.ssh.exec(check_cmd)
-            
-            if not stdout or "No such file" in stderr:
-                if self.logger:
-                    self.logger.failure(__file__, f"<save_data>: PCAP file not created on RPi")
-                return False
-            
-            scp_cmd = f"scp {Settings.RPi_ID}@{Settings.RPi_IP}:{remote_pcap} {local_pcap}"
-            
-            import subprocess
-            try:
-                result = subprocess.run(
-                    scp_cmd,
-                    shell=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=30
-                )
-                
-                if result.returncode == 0:
-                    if self.logger:
-                        self.logger.success(__file__, f"<save_data>: PCAP saved successfully - {local_pcap}")
-                    
-                    cleanup_cmd = f"rm {remote_pcap}"
-                    self.ssh.exec(cleanup_cmd)
-                    
-                    return True
-                else:
-                    if self.logger:
-                        self.logger.failure(__file__, f"<save_data>: SCP transfer failed - {result.stderr}")
-                    return False
-                    
-            except subprocess.TimeoutExpired:
-                if self.logger:
-                    self.logger.failure(__file__, "<save_data>: SCP transfer timeout")
-                return False
-            except Exception as scp_error:
-                if self.logger:
-                    self.logger.failure(__file__, f"<save_data>: SCP error - {str(scp_error)}")
-                return False
-            
+                self.logger.success(__file__, f"<start_save>: Saving enabled - {experiment_name}")
+            return True
+        
         except Exception as e:
             if self.logger:
-                self.logger.failure(__file__, f"<save_data>: {str(e)}")
+                self.logger.failure(__file__, f"<start_save>: {str(e)}")
             return False
+
+    def stop_save(self):
+        if not self.save_enabled:
+            return True
+        
+        try:
+            save_control_cmd = "echo 'DISABLE_SAVE' > /tmp/csi_control"
+            stdout, stderr = self.forward_ssh.exec(save_control_cmd)
+            
+            time.sleep(0.2)
+        
+            self.save_enabled = False
+        
+            if self.logger:
+                self.logger.success(__file__, "<stop_save>: Saving disabled")
+            return True
+        
+        except Exception as e:
+            if self.logger:
+                self.logger.failure(__file__, f"<stop_save>: {str(e)}")
+            return False
+
+    def save_data(self):
+        if self.save_enabled:
+            success = self.stop_save()
+            if success:
+                return self.transfer_data()
+            return False
+        else:
+            return self.start_save()
     
     def stop_stream(self):
         if not self.connected:
@@ -190,7 +176,10 @@ class RPiDevice(RemoteDevice):
             return False
         
         try:
-            self._stop_forward_udp()
+            if self.save_enabled:
+                self.stop_save()
+            
+            self._stop_csi_forwarder()
             
             stdout, stderr = self.ssh.exec("sudo cspi stop")
             
@@ -207,6 +196,38 @@ class RPiDevice(RemoteDevice):
         except Exception as e:
             if self.logger:
                 self.logger.failure(__file__, f"<stop_stream>: {str(e)}")
+            return False
+    
+    def transfer_data(self):
+        if not self.current_experiment_name:
+            if self.logger:
+                self.logger.failure(__file__, "<transfer_data>: no experiment name set")
+            return False
+
+        try:
+            os.makedirs("./stream/", exist_ok=True)
+            
+            remote_path = f"{self.current_save_dir}/{self.current_experiment_name}_*.bin"
+            local_path = "./stream/"
+
+            scp_cmd = (
+                f"sshpass -p '{Settings.RPi_PASSWORD}' "
+                f"scp {Settings.RPi_ID}@{Settings.RPi_IP}:{remote_path} {local_path}"
+            )
+
+            result = os.system(scp_cmd)
+            if result != 0:
+                if self.logger:
+                    self.logger.failure(__file__, f"<transfer_data>: SCP failed with code {result}")
+                return False
+
+            if self.logger:
+                self.logger.success(__file__, f"<transfer_data>: file transferred to {local_path}")
+            return True
+
+        except Exception as e:
+            if self.logger:
+                self.logger.failure(__file__, f"<transfer_data>: {str(e)}")
             return False
     
     def disconnect_sniffer(self):
@@ -237,12 +258,14 @@ class RPiDevice(RemoteDevice):
                 self.logger.failure(__file__, f"<disconnect_sniffer>: {str(e)}")
             return False
     
-    def _start_forward_udp(self):
+    def _start_csi_forwarder(self):
         try:
             if self.logger:
-                self.logger.success(__file__, "<_start_forward_udp>: starting forward_udp.py")
+                self.logger.success(__file__, "<_start_csi_forwarder>: starting csi_forwarder_tee.py")
             
-            stdin, stdout, stderr = self.forward_ssh.client.exec_command("python forward_udp.py")
+            forwarder_cmd = f"python3 csi_forwarder_tee.py {Settings.Laptop_IP_FROM_RPi} {Settings.PORT}"
+            
+            stdin, stdout, stderr = self.forward_ssh.client.exec_command(forwarder_cmd)
             
             self.forward_running = True
             self.forward_process_started = True
@@ -253,7 +276,7 @@ class RPiDevice(RemoteDevice):
                 
         except Exception as e:
             if self.logger:
-                self.logger.failure(__file__, f"<_start_forward_udp>: {str(e)}")
+                self.logger.failure(__file__, f"<_start_csi_forwarder>: {str(e)}")
             return False
     
     def _check_forward_status(self):
@@ -262,31 +285,31 @@ class RPiDevice(RemoteDevice):
             return
         
         try:
-            stdout, stderr = self.forward_ssh.exec("pgrep -f forward_udp.py")
+            stdout, stderr = self.forward_ssh.exec("pgrep -f csi_forwarder_tee.py")
             
             if not stdout.strip():
                 if self.logger:
-                    self.logger.failure(__file__, "<_check_forward_status>: forward_udp.py process not found")
+                    self.logger.failure(__file__, "<_check_forward_status>: csi_forwarder_tee.py process not found")
                 self.forward_running = False
                 self.forward_timer.stop()
             else:
                 if self.logger:
-                    self.logger.success(__file__, "<_check_forward_status>: forward_udp.py running normally")
+                    self.logger.success(__file__, "<_check_forward_status>: csi_forwarder_tee.py running normally")
                     
         except Exception as e:
             if self.logger:
                 self.logger.failure(__file__, f"<_check_forward_status>: {str(e)}")
     
-    def _stop_forward_udp(self):
+    def _stop_csi_forwarder(self):
         try:
             self.forward_timer.stop()
             self.forward_running = False
             
             if self.forward_ssh and self.forward_process_started:
-                stdout, stderr = self.forward_ssh.exec("pkill -f forward_udp.py")
+                stdout, stderr = self.forward_ssh.exec("pkill -f csi_forwarder_tee.py")
                 
                 if self.logger:
-                    self.logger.success(__file__, "<_stop_forward_udp>: forward_udp.py stopped")
+                    self.logger.success(__file__, "<_stop_csi_forwarder>: csi_forwarder_tee.py stopped")
             
             if self.forward_ssh:
                 self.forward_ssh.close()
@@ -296,7 +319,7 @@ class RPiDevice(RemoteDevice):
             
         except Exception as e:
             if self.logger:
-                self.logger.failure(__file__, f"<_stop_forward_udp>: {str(e)}")
+                self.logger.failure(__file__, f"<_stop_csi_forwarder>: {str(e)}")
     
     def run(self):
         self.exec_()

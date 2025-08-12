@@ -6,7 +6,6 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
 from PyQt5.QtCore import pyqtSlot
 import pyqtgraph as pg
-import numpy as np
 
 
 class ChartView(QWidget):
