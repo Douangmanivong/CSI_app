@@ -1,0 +1,6 @@
+#!/bin/sh
+# start_stream - Start tcpdump for CSI collection on UDP port 4400
+tcpdump -i eth6 -w /tmp/stream/csi_$(date +%s).pcap -s 0 udp port 4400 &
+echo $! > /tmp/tcpdump.pid
+
+echo "SUCCESS: tcpdump started"

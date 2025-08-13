@@ -1,0 +1,13 @@
+#!/bin/sh
+# setup_env - Load dhd.ko if not loaded
+lsmod | grep -q dhd || insmod /jffs/dhd.ko
+
+# Check required executables
+for cmd in nexutil tcpdump nc mcp; do
+    command -v $cmd > /dev/null || { echo "ERROR: Missing $cmd"; exit 1; }
+done
+
+# Create stream directory
+mkdir -p /tmp/stream
+
+echo "SUCCESS: Setup complete"

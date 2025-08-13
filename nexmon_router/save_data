@@ -1,0 +1,29 @@
+#!/bin/sh
+# save_data - Transfer pcap files to laptop via nc
+# Usage: save_data <laptop_ip> <port>
+
+LAPTOP_IP=${1:-"192.168.1.100"}
+PORT=${2:-"5000"}
+
+if [ ! -d /tmp/stream ]; then
+    echo "ERROR: No stream directory"
+    exit 1
+fi
+
+count=$(ls /tmp/stream/*.pcap 2>/dev/null | wc -l)
+if [ $count -eq 0 ]; then
+    echo "ERROR: No pcap files found"
+    exit 1
+fi
+
+echo "INFO: Sending $count files to $LAPTOP_IP:$PORT"
+
+for pcap in /tmp/stream/*.pcap; do
+    if [ -f "$pcap" ]; then
+        nc $LAPTOP_IP $PORT < "$pcap"
+        echo "SENT: $(basename "$pcap")"
+        sleep 1
+    fi
+done
+
+echo "SUCCESS: All files sent"

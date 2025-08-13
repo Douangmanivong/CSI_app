@@ -1,0 +1,15 @@
+#!/bin/sh
+# stop_stream - Stop tcpdump
+if [ -f /tmp/tcpdump.pid ]; then
+    kill $(cat /tmp/tcpdump.pid) 2>/dev/null
+    rm /tmp/tcpdump.pid
+    echo "SUCCESS: tcpdump stopped"
+else
+    echo "WARNING: No tcpdump PID found"
+fi
+
+# List collected files
+if [ -d /tmp/stream ]; then
+    count=$(ls /tmp/stream/*.pcap 2>/dev/null | wc -l)
+    echo "INFO: $count pcap files in /tmp/stream"
+fi
