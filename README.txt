@@ -13,7 +13,7 @@ PREREQUISITES :
 Sniffing device must be patched with corresponding nexmon patch from nexmon csi git repo.
 For RPi4 : all files in the nexmon_rpi folder must be transfered to the device, a python venv must be installed and boot version must be the same as given in the folder. Never update software otherwise flash the sd card with the provided image. To use CSPI, the RPi4 must be used with default user.
 For ASUS AC86U : all files in the nexmon_router folder must be transfered to the device and use "chmod +x /jffs/setup_env /jffs/start_stream /jffs/stop_stream /jffs/save_data".
-For AP : 2.4GHz and 5GHz should be separated. When connecting your laptop to AP check channel and bandwidth. Recommanded channel is 44 and bandwidth is 80MHz.
+For AP : 2.4GHz and 5GHz should be separated. When connecting your laptop to AP check channel, bandwidth and 2.4GHz or 5GHz MAC address. Recommanded channel is 44 and bandwidth is 80MHz.
 For laptop : install all dependancies, install a python venv, run the app on a Linux system.
 For dependancies check requirements.txt file.
 
@@ -21,7 +21,7 @@ HOW TO USE :
 Check if AP and sniffing device are configured as mentionned above.
 Connect your laptop to AP wifi.
 Connect your sniffing device to the laptop with LAN cable. 
-Check IP addresses for each device and correct the MACROS in settings.py file.
+Check IP and MAC addresses for each device and correct the MACROS in settings.py file. 
 Change the import in main.py, the sniffer thread declaration depending on used device.
 The space between the devices should be at least 50cm, otherwise CSI data is not usable.
 Run main.py file, in this order, press "Start", "Connect to sniffer", "Setup sniffer", "Start stream", "Save data", "Stop stream" and "Disconnect".
