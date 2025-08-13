@@ -1,8 +1,9 @@
+
 CSI STREAMING APP READ ME
 
 PURPOSES :
-This application collects, streams, processes and displays CSI in real time.
-Offers many possibilities for real time HAR.
+This application collects, streams, processes and displays CSI in real-time.
+Offers many possibilities for real-time HAR.
 
 FEATURES :
 Modularity in sniffing devices. As of now, collection is possible with RPi4 and ASUS AC86U.
@@ -36,7 +37,7 @@ The CSI STREAMING APP uses PYQT5 tools to implement a multi threaded architectur
 OPTIMIZATION PERSPECTIVES :
 UDP forwarding allows great reactivity and speed but introduces packet loss that corrupts the CSI. TCP solves this problem but slows down the pipeline. When enough CSI is collected (high frequency of pings), packet loss becomes negligeable.
 Pipeline can be optimized with manual parsing instead of imported library.
-For AI model use (Doppler velocity pattern recognition), the window of the chart must be constant, optimal pattern recognition should be in the middle. A proper window length should be implemented for better pattern recognition and keep the "real time" aspect. AI model requires much more CPU capacity and memory. Quantisize the model is one way to help with memory management. Using another process instead of a thread to run the model grants more CPU capacity to the app and the model. Use message queues or queues for communication/synchronization of the processes.
+For AI model use (Doppler velocity pattern recognition), the window of the chart should be constant. An optimized chart should be implemented for better pattern recognition while keeping the "real-time" aspect. AI model requires much more CPU capacity and memory. Quantize the model is one way to help with memory management. Using another process instead of a thread to run the model grants more CPU capacity to the app and the model. Use message queues or queues for communication/synchronization of the processes. Finally, the RPi4 pipeline for CSI collection offers the possibility of deploying the app on embedded systems rather than a laptop. The app should be implemented in a specific way for the targetted device to reduce memory and CPU usage. Combined with the use of a light real-time operating system (FREERTOS for instance) this could allow the generalization of the technology or make it easier to use.
 
 Written by The Phong DOUANGMANIVONG.
 
